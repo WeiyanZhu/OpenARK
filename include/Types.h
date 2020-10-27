@@ -290,6 +290,7 @@ namespace ark{
         void saveSimple(std::string dir){
             std::stringstream filename;
             for(size_t i=0; i < images_.size(); i++){
+				 filename.str(std::string());
                 filename << dir << frameId_ << "_" << i << ".png";
                 cv::imwrite(filename.str(),images_[i]);
             }
