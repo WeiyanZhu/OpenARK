@@ -24,6 +24,8 @@
 #include "Core.h"
 #include "Visualizer.h"
 
+// SHUBHA: MIGHT NEED TO REMOVE SOME OF THESE INCLUDES
+
 using namespace ark;
 using boost::filesystem::path;
 
@@ -63,7 +65,9 @@ int main(int argc, char **argv)
     path infrared2_path = directory_path / "infrared2/";
     path rgb_path = directory_path / "rgb/";
     path timestamp_path = directory_path / "timestamp.txt";
-    path intrin_path = directory_path / "intrin.bin";
+    // SHUBHA REMOVE START
+//    path intrin_path = directory_path / "intrin.bin";
+    // SHUBHA REMOVE END
     path meta_path = directory_path / "meta.txt";
     path imu_path = directory_path / "imu.txt";
     std::vector<path> pathList{directory_path, depth_path, infrared_path, infrared2_path, rgb_path};
@@ -95,9 +99,12 @@ int main(int argc, char **argv)
         std::ofstream imu_ofs(imu_path.string());
         std::ofstream timestamp_ofs(timestamp_path.string());
         {
-            std::ofstream intrin_ofs(intrin_path.string());
-            boost::archive::text_oarchive oa(intrin_ofs);
-            oa << camera.getDepthIntrinsics();
+            /* SHUBHA: I think this code just writes the intrinsics to an intrin.bin file. We probably want to remove that overall. */
+            // SHUBHA: REMOVE START
+//            std::ofstream intrin_ofs(intrin_path.string());
+//            boost::archive::text_oarchive oa(intrin_ofs);
+//            oa << camera.getDepthIntrinsics();
+            // SHUBHA REMOVE END
 
             std::ofstream meta_ofs(meta_path.string());
             meta_ofs << "depth " << camera.getDepthScale();

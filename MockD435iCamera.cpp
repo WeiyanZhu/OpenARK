@@ -10,8 +10,12 @@
 /** RealSense SDK2 Cross-Platform Depth Camera Backend **/
 namespace ark
 {
-MockD435iCamera::MockD435iCamera(path dir) : dataDir(dir), imuTxtPath(dir / "imu.txt"), metaTxtPath(dir / "meta.txt"), intrinFilePath(dir / "intrin.bin"), timestampTxtPath(dir / "timestamp.txt"), depthDir(dir / "depth/"),
-                                             rgbDir(dir / "rgb/"), infraredDir(dir / "infrared/"), infrared2Dir(dir / "infrared2/"), firstFrameId(-1), startTime(0)
+// SHUBHA MODIFY START
+//MockD435iCamera::MockD435iCamera(path dir) : dataDir(dir), imuTxtPath(dir / "imu.txt"), metaTxtPath(dir / "meta.txt"), intrinFilePath(dir / "intrin.bin"), timestampTxtPath(dir / "timestamp.txt"), depthDir(dir / "depth/"),
+//                                             rgbDir(dir / "rgb/"), infraredDir(dir / "infrared/"), infrared2Dir(dir / "infrared2/"), firstFrameId(-1), startTime(0)
+MockD435iCamera::MockD435iCamera(path dir) : dataDir(dir), imuTxtPath(dir / "imu.txt"), metaTxtPath(dir / "meta.txt"), intrinFilePath("config/d435i_intr.yaml"), timestampTxtPath(dir / "timestamp.txt"), depthDir(dir / "depth/"),
+rgbDir(dir / "rgb/"), infraredDir(dir / "infrared/"), infrared2Dir(dir / "infrared2/"), firstFrameId(-1), startTime(0)
+// SHUBHA MODIFY END
 {
     width = 640;
     height = 480;
@@ -28,11 +32,23 @@ void MockD435iCamera::start()
     imuStream = ifstream(imuTxtPath.string());
     timestampStream = ifstream(timestampTxtPath.string());
     {
+        // SHUBHA: Reads in the intrinsics from intrin.bin.
+        // Transition to use yaml file
+        // START
         auto &intrinStream = ifstream(intrinFilePath.string());
         boost::archive::text_iarchive ia(intrinStream);
         ia >> depthIntrinsics;
 
         std::cout << "depthIntrin: fx: " << depthIntrinsics.fx << " fy: " << depthIntrinsics.fy << " ppx: " << depthIntrinsics.ppx << " ppy: " << depthIntrinsics.ppy << '\n';
+        
+        // way 1
+        cv::FileStorage configFile(intrinFilePath, cv::FileStorage::READ);
+        auto depthIntrinsics = configFile["additional_cameras"];
+        std::cout << "config file info: " << depthIntrinsics;
+        
+//        std::cout << "depthIntrin: fx: " << configFile["additional_cameras"] << " fy: " << depthIntrinsics.fy << " ppx: " << depthIntrinsics.ppx << " ppy: " << depthIntrinsics.ppy << '\n';
+//
+        // END
 
         auto &metaStream = ifstream(metaTxtPath.string());
         std::string ph;
