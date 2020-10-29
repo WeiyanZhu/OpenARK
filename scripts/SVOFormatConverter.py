@@ -58,7 +58,7 @@ def main():
     lineIndex = 0
     for line in imu_data_file:
         if(lineIndex == 0):
-            imu_file.write("ts %s\n" % line.strip()[8:])
+            imu_file.write("ts %s\n" % line.strip()[4:])
         elif(lineIndex == 1 or lineIndex == 2):
             typeText = "gy" if lineIndex == 1 else "ac"
             values = line.strip()[1:-1].split(',')
@@ -87,7 +87,7 @@ def main():
             #store metadata
             frame = cam.get_svo_position()
             timestamp = cam.get_timestamp(sl.TIME_REFERENCE.IMAGE).get_nanoseconds()
-            timestamp_file.write("%s %s\n" % (frame, str(timestamp)[8:]))
+            timestamp_file.write("%s %s\n" % (frame, str(timestamp)[4:]))
 
             sensors_data = sl.SensorsData()
             cam.get_sensors_data(sensors_data, sl.TIME_REFERENCE.IMAGE)
