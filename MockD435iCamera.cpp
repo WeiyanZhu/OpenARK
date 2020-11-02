@@ -35,18 +35,18 @@ void MockD435iCamera::start()
         // SHUBHA: Reads in the intrinsics from intrin.bin.
         // Transition to use yaml file
         // START
-        auto &intrinStream = ifstream(intrinFilePath.string());
-        boost::archive::text_iarchive ia(intrinStream);
-        ia >> depthIntrinsics;
-
-        std::cout << "depthIntrin: fx: " << depthIntrinsics.fx << " fy: " << depthIntrinsics.fy << " ppx: " << depthIntrinsics.ppx << " ppy: " << depthIntrinsics.ppy << '\n';
+//        auto &intrinStream = ifstream(intrinFilePath.string());
+//        boost::archive::text_iarchive ia(intrinStream);
+//        ia >> depthIntrinsics;
+//
+//        std::cout << "depthIntrin: fx: " << depthIntrinsics.fx << " fy: " << depthIntrinsics.fy << " ppx: " << depthIntrinsics.ppx << " ppy: " << depthIntrinsics.ppy << '\n';
         
         // way 1
         cv::FileStorage configFile(intrinFilePath, cv::FileStorage::READ);
         auto depthIntrinsics = configFile["additional_cameras"];
         std::cout << "config file info: " << depthIntrinsics;
         
-//        std::cout << "depthIntrin: fx: " << configFile["additional_cameras"] << " fy: " << depthIntrinsics.fy << " ppx: " << depthIntrinsics.ppx << " ppy: " << depthIntrinsics.ppy << '\n';
+//        std::cout << "depthIntrin: fx: " << configFile["additional_cameras"].fx << " fy: " << depthIntrinsics.fy << " ppx: " << depthIntrinsics.ppx << " ppy: " << depthIntrinsics.ppy << '\n';
 //
         // END
 
