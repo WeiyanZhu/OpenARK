@@ -9,6 +9,7 @@
 #include "MockD435iCamera.h"
 #include "Util.h"
 #include "OkvisSLAMSystem.h"
+#include "SaveFrame.h"
 
 using namespace ark;
 using boost::filesystem::path;
@@ -135,11 +136,31 @@ int main(int argc, char **argv)
         }
     });
     slam.AddFrameAvailableHandler(handler, "mapping");
-
+	/*
     KeyFrameAvailableHandler kfHandler([](MultiCameraFrame::Ptr frame) {
         frame->saveSimple("map_images/");
     });
-    //slam.AddKeyFrameAvailableHandler(kfHandler, "saving");
+    slam.AddKeyFrameAvailableHandler(kfHandler, "saving");
+	**/
+
+	std::string frameOutput;
+	frameOutput = "./frames/";
+	SaveFrame* saveFrame = new SaveFrame(frameOutput);
+	KeyFrameAvailableHandler saveFrameHandler([&saveFrame](MultiCameraFrame::Ptr frame) {
+
+		cv::Mat imRGB;
+		cv::Mat imDepth;
+
+		frame->getImage(imRGB, 3);
+
+		frame->getImage(imDepth, 2);
+
+		Eigen::Matrix4d transform(frame->T_WC(3));
+
+		saveFrame->frameWrite(imRGB, imDepth, transform, frame->frameId_);
+	});
+
+	slam.AddKeyFrameAvailableHandler(saveFrameHandler, "saveframe");
 
     LoopClosureDetectedHandler loopHandler([&](void) {
         std::vector<Eigen::Matrix4d> traj;
