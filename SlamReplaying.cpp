@@ -153,7 +153,7 @@ int main(int argc, char **argv)
 
 		frame->getImage(imRGB, 3);
 
-		frame->getImage(imDepth, 2);
+		frame->getImage(imDepth, 4);
 
 		Eigen::Matrix4d transform(frame->T_WC(3));
 
