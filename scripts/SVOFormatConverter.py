@@ -24,7 +24,7 @@ def main():
     #initialize camera
     input_type = sl.InputType()
     input_type.set_from_svo_file(filepath)
-    init = sl.InitParameters(input_t=input_type, svo_real_time_mode=False)
+    init = sl.InitParameters(input_t=input_type, svo_real_time_mode=False, coordinate_units=sl.UNIT.METER)
     cam = sl.Camera()
     status = cam.open(init)
     if status != sl.ERROR_CODE.SUCCESS:
@@ -56,13 +56,25 @@ def main():
     imu_file = open(str(path_prefix/ "imu.txt"), 'w')
     imu_data_file = open(imuFilepath, 'r')
     lineIndex = 0
+    #acData = ""
     for line in imu_data_file:
         if(lineIndex == 0):
             imu_file.write("ts %s\n" % line.strip()[4:])
-        elif(lineIndex == 1 or lineIndex == 2):
-            typeText = "gy" if lineIndex == 1 else "ac"
+            
+        elif(lineIndex == 1):
             values = line.strip()[1:-1].split(',')
-            imu_file.write("%s %s %s %s\n" % (typeText, values[0], values[1], values[2]))
+            acData = "%s %s %s %s\n" % ("ac", values[0], values[1], values[2])
+        elif(lineIndex == 2):
+            values = line.strip()[1:-1].split(',')
+            imu_file.write("%s %s %s %s\n" % ("gy", values[0], values[1], values[2]))
+            imu_file.write(acData)
+            '''
+        elif(lineIndex == 1):
+            values = line.strip()[1:-1].split(',')
+            imu_file.write("%s %s %s %s\n" % ("ac", values[0], values[1], values[2]))
+        elif(lineIndex == 2):
+            values = line.strip()[1:-1].split(',')
+            imu_file.write("%s %s %s %s\n" % ("gy", values[0], values[1], values[2]))'''
         lineIndex = (lineIndex+1)%3
     imu_data_file.close()
     imu_file.close()
@@ -76,24 +88,31 @@ def main():
     rgb_image = sl.Mat()
     #go through svo files to get info
     runtime_param = sl.RuntimeParameters()
-    runtime_param.sensing_mode = sl.SENSING_MODE.FILL
+    runtime_param.sensing_mode = sl.SENSING_MODE.STANDARD
 
     total_frames = cam.get_svo_number_of_frames()
+    trans = cam.get_camera_information(resizer=sl.Resolution(640,480)).camera_imu_transform
+    trans.inverse()
+    print("camera to imu", trans)
+    lc = cam.get_camera_information(resizer=sl.Resolution(640,480)).calibration_parameters.left_cam
+    print("intrinsic left", [lc.fx, lc.fy, lc.cx, lc.cy])
+
+    
     while True:  
         err = cam.grab(runtime_param)
         
         if err == sl.ERROR_CODE.SUCCESS:
-
+            sensors_data = sl.SensorsData()
+            cam.get_sensors_data(sensors_data, sl.TIME_REFERENCE.IMAGE)
+            imu = sl.IMUData()
+            imu = sensors_data.get_imu_data()
+            
+            #print("sensor pose T", imu.get_pose().get_translation())
             #store metadata
             frame = cam.get_svo_position()
             timestamp = cam.get_timestamp(sl.TIME_REFERENCE.IMAGE).get_nanoseconds()
             timestamp_file.write("%s %s\n" % (frame, str(timestamp)[4:]))
 
-            sensors_data = sl.SensorsData()
-            cam.get_sensors_data(sensors_data, sl.TIME_REFERENCE.IMAGE)
-            imu = sl.IMUData()
-            imu = sensors_data.get_imu_data()
-            sensor_timestamp = imu.timestamp.get_nanoseconds()
             ''' old way to get imu
             sensor_gyroscope = imu.get_angular_velocity()
             sensor_accelerometer = imu.get_linear_acceleration()
@@ -105,7 +124,7 @@ def main():
             # Retrieve SVO images
             cam.retrieve_image(left_image, sl.VIEW.LEFT_GRAY)
             cam.retrieve_image(right_image, sl.VIEW.RIGHT_GRAY)
-            cam.retrieve_measure(depth_image, sl.MEASURE.DEPTH) #sl.MEASURE.DEPTH for 16bit depth map, need to ask what we need later
+            cam.retrieve_measure(depth_image, sl.MEASURE.DEPTH, sl.MEM.CPU, sl.Resolution(640, 480))
             #cam.retrieve_image(depth_image, sl.VIEW.DEPTH) 
             cam.retrieve_image(rgb_image, sl.VIEW.LEFT)
 
@@ -117,7 +136,7 @@ def main():
             #resize images to (640,480) cause currently OpenARK works with this resolution
             resizedLeft = cv2.resize(left_image.get_data(), (640, 480))
             resizedRight = cv2.resize(right_image.get_data(), (640, 480))
-            resizedDepth = cv2.resize(depth_image.get_data().astype(np.uint16), (640, 480))
+            resizedDepth = (depth_image.get_data()*1000).astype(np.uint16)#cv2.resize((depth_image.get_data()*1000).astype(np.uint16))
             resizedRGB = cv2.resize(rgb_image.get_data(), (640, 480))
             cv2.imwrite(str(left_image_path), resizedLeft)
             cv2.imwrite(str(right_image_path), resizedRight)
