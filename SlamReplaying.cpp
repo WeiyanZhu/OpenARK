@@ -213,7 +213,7 @@ int main(int argc, char **argv)
             //Add data to SLAM system
             slam.PushIMU(imuData);
             // make it the same as real camera
-            frame->images_.resize(4);
+            frame->images_.resize(5);
             slam.PushFrame(frame);
         }
         catch (const std::exception &e)

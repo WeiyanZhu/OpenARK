@@ -150,7 +150,7 @@ void MockD435iCamera::update(MultiCameraFrame &frame)
     std::string fileName = fileNamess.str();
 
     std::vector<path> pathList{infraredDir, infrared2Dir, depthDir, rgbDir, depthDir};
-    frame.images_.resize(pathList.size()+1);
+    frame.images_.resize(pathList.size());
 
     // for (auto i = 0; i < pathList.size(); i++)
     // {
