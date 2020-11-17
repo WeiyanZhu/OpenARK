@@ -124,7 +124,7 @@ def main():
             # Retrieve SVO images
             cam.retrieve_image(left_image, sl.VIEW.LEFT_GRAY)
             cam.retrieve_image(right_image, sl.VIEW.RIGHT_GRAY)
-            cam.retrieve_measure(depth_image, sl.MEASURE.DEPTH, sl.MEM.CPU, sl.Resolution(640, 480))
+            cam.retrieve_measure(depth_image, sl.MEASURE.DEPTH)
             #cam.retrieve_image(depth_image, sl.VIEW.DEPTH) 
             cam.retrieve_image(rgb_image, sl.VIEW.LEFT)
 
@@ -136,7 +136,7 @@ def main():
             #resize images to (640,480) cause currently OpenARK works with this resolution
             resizedLeft = cv2.resize(left_image.get_data(), (640, 480))
             resizedRight = cv2.resize(right_image.get_data(), (640, 480))
-            resizedDepth = (depth_image.get_data()*1000).astype(np.uint16)#cv2.resize((depth_image.get_data()*1000).astype(np.uint16))
+            resizedDepth = cv2.resize((depth_image.get_data()*1000).astype(np.uint16), (640, 480))
             resizedRGB = cv2.resize(rgb_image.get_data(), (640, 480))
             cv2.imwrite(str(left_image_path), resizedLeft)
             cv2.imwrite(str(right_image_path), resizedRight)
