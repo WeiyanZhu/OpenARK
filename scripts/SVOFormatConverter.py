@@ -4,6 +4,7 @@ import pyzed.sl as sl
 import cv2
 from pathlib import Path
 import os
+import math 
 
 def progress_bar(percent_done, bar_length=50):
     done_length = int(bar_length * percent_done / 100)
@@ -60,21 +61,21 @@ def main():
     for line in imu_data_file:
         if(lineIndex == 0):
             imu_file.write("ts %s\n" % line.strip()[4:])
-            
+            '''
         elif(lineIndex == 1):
             values = line.strip()[1:-1].split(',')
             acData = "%s %s %s %s\n" % ("ac", values[0], values[1], values[2])
         elif(lineIndex == 2):
             values = line.strip()[1:-1].split(',')
-            imu_file.write("%s %s %s %s\n" % ("gy", values[0], values[1], values[2]))
+            imu_file.write("%s %s %s %s\n" % ("gy", math.radians(float(values[0])), math.radians(float(values[1])), math.radians(float(values[2]))))
             imu_file.write(acData)
             '''
         elif(lineIndex == 1):
             values = line.strip()[1:-1].split(',')
-            imu_file.write("%s %s %s %s\n" % ("ac", values[0], values[1], values[2]))
+            imu_file.write("%s %s %s %s\n" % ("gy", math.radians(float(values[0])), math.radians(float(values[1])), math.radians(float(values[2]))))
         elif(lineIndex == 2):
             values = line.strip()[1:-1].split(',')
-            imu_file.write("%s %s %s %s\n" % ("gy", values[0], values[1], values[2]))'''
+            imu_file.write("%s %s %s %s\n" % ("ac", values[0], values[1], values[2]))
         lineIndex = (lineIndex+1)%3
     imu_data_file.close()
     imu_file.close()
@@ -91,12 +92,6 @@ def main():
     runtime_param.sensing_mode = sl.SENSING_MODE.STANDARD
 
     total_frames = cam.get_svo_number_of_frames()
-    trans = cam.get_camera_information(resizer=sl.Resolution(640,480)).camera_imu_transform
-    trans.inverse()
-    print("camera to imu", trans)
-    lc = cam.get_camera_information(resizer=sl.Resolution(640,480)).calibration_parameters.left_cam
-    print("intrinsic left", [lc.fx, lc.fy, lc.cx, lc.cy])
-
     
     while True:  
         err = cam.grab(runtime_param)
