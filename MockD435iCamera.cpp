@@ -10,7 +10,8 @@
 /** RealSense SDK2 Cross-Platform Depth Camera Backend **/
 namespace ark
 {
-MockD435iCamera::MockD435iCamera(path dir) : dataDir(dir), imuTxtPath(dir / "imu.txt"), metaTxtPath(dir / "meta.txt"), intrinFilePath(dir / "intrin.bin"), timestampTxtPath(dir / "timestamp.txt"), depthDir(dir / "depth/"),
+
+MockD435iCamera::MockD435iCamera(path dir) : dataDir(dir), imuTxtPath(dir / "imu.txt"), metaTxtPath(dir / "meta.txt"), timestampTxtPath(dir / "timestamp.txt"), depthDir(dir / "depth/"),
                                              rgbDir(dir / "rgb/"), infraredDir(dir / "infrared/"), infrared2Dir(dir / "infrared2/"), firstFrameId(-1), startTime(0)
 {
     width = 640;
@@ -27,12 +28,23 @@ void MockD435iCamera::start()
 {
     imuStream = ifstream(imuTxtPath.string());
     timestampStream = ifstream(timestampTxtPath.string());
-    {
-        auto &intrinStream = ifstream(intrinFilePath.string());
-        boost::archive::text_iarchive ia(intrinStream);
-        ia >> depthIntrinsics;
+	{
+		// TODO: change currently hardcoded yaml file name
+		std::string configFilename = util::resolveRootPath("config/d435i_intr.yaml");
+		cv::FileStorage file(configFilename, cv::FileStorage::READ);
 
-        std::cout << "depthIntrin: fx: " << depthIntrinsics.fx << " fy: " << depthIntrinsics.fy << " ppx: " << depthIntrinsics.ppx << " ppy: " << depthIntrinsics.ppy << '\n';
+		// TODO: change - currently hardcoded to be the first of the additional cameras (supposedly the depth camera)
+		if (!file["additional_cameras"][0].empty()) {
+			depthIntrinsics.fx = file["additional_cameras"][0]["focal_length"][0];
+			depthIntrinsics.fy = file["additional_cameras"][0]["focal_length"][1];
+			depthIntrinsics.ppx = file["additional_cameras"][0]["principal_point"][0];
+			depthIntrinsics.ppy = file["additional_cameras"][0]["principal_point"][1];
+			depthIntrinsics.width = file["additional_cameras"][0]["image_dimension"][0];
+			depthIntrinsics.height = file["additional_cameras"][0]["image_dimension"][1];
+			std::cout << "depthIntrin: fx: " << depthIntrinsics.fx << " fy: " << depthIntrinsics.fy << " ppx: " << depthIntrinsics.ppx << " ppy: " << depthIntrinsics.ppy << '\n';
+		} else {
+			std::cout << "Camera information not found.\n";
+		}
 
         auto &metaStream = ifstream(metaTxtPath.string());
         std::string ph;

@@ -16,7 +16,6 @@
 #include <pcl/point_cloud.h>
 #include <boost/archive/text_oarchive.hpp>
 
-// OpenARK Libraries
 #include "Version.h"
 #include "D435iCamera.h"
 #include "Util.h"
@@ -63,7 +62,6 @@ int main(int argc, char **argv)
     path infrared2_path = directory_path / "infrared2/";
     path rgb_path = directory_path / "rgb/";
     path timestamp_path = directory_path / "timestamp.txt";
-    path intrin_path = directory_path / "intrin.bin";
     path meta_path = directory_path / "meta.txt";
     path imu_path = directory_path / "imu.txt";
     std::vector<path> pathList{directory_path, depth_path, infrared_path, infrared2_path, rgb_path};
@@ -95,9 +93,6 @@ int main(int argc, char **argv)
         std::ofstream imu_ofs(imu_path.string());
         std::ofstream timestamp_ofs(timestamp_path.string());
         {
-            std::ofstream intrin_ofs(intrin_path.string());
-            boost::archive::text_oarchive oa(intrin_ofs);
-            oa << camera.getDepthIntrinsics();
 
             std::ofstream meta_ofs(meta_path.string());
             meta_ofs << "depth " << camera.getDepthScale();

@@ -6,6 +6,10 @@
 #include <iostream>
 #include <fstream>
 
+#include <sl/Camera.hpp>
+#pragma comment(lib, "sl_zed64.lib")
+using namespace sl;
+
 namespace ark{
 
     using namespace cv;
@@ -26,6 +30,17 @@ namespace ark{
             focal = {intr.fx, intr.fy};
             principal = { intr.ppx, intr.ppy};
         }
+
+		// SHUBHA START: Adding constructor for the ZED 2 camera
+		CameraCalibration(Eigen::Matrix4f transform, CameraParameters intr) :
+			transform(transform)
+		{
+			dimensions = { (int) intr.image_size.width, (int) intr.image_size.height };
+			coeffs = { (float) intr.disto[0], (float) intr.disto[1], (float) intr.disto[2], (float) intr.disto[3] };
+			focal = { intr.fx, intr.fy };
+			principal = { intr.cx, intr.cy };
+		}
+		// SHUBHA END
 
         CameraCalibration(){}
 
