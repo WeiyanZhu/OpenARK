@@ -31,7 +31,6 @@ namespace ark{
             principal = { intr.ppx, intr.ppy};
         }
 
-		// SHUBHA START: Adding constructor for the ZED 2 camera
 		CameraCalibration(Eigen::Matrix4f transform, CameraParameters intr) :
 			transform(transform)
 		{
@@ -40,7 +39,6 @@ namespace ark{
 			focal = { intr.fx, intr.fy };
 			principal = { intr.cx, intr.cy };
 		}
-		// SHUBHA END
 
         CameraCalibration(){}
 
