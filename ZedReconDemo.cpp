@@ -2,6 +2,7 @@
 #include "OkvisSLAMSystem.h"
 #include <iostream>
 //#include <direct.h>
+#include <sl/Camera.hpp>
 #include <thread>
 #include "glfwManager.h"
 #include "Util.h"
@@ -51,31 +52,6 @@ std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat col
 	return rgbd_image;
 }
 
-//TODO: check ScalableTSDFVolume.cpp and UniformTSDFVolume.cpp, implement deintegration
-void deintegrate(int frame_id, SaveFrame * saveFrame, open3d::integration::ScalableTSDFVolume * tsdf_volume, open3d::camera::PinholeCameraIntrinsic intr) {
-	RGBDFrame frame = saveFrame->frameLoad(frame_id);
-
-	if (frame.frameId == -1) {
-		cout << "deintegration failed with frameload fail " << frame_id << endl;
-		return;
-	}
-
-	auto rgbd_image = generateRGBDImageFromCV(frame.imRGB, frame.imDepth);
-
-	cv::Mat pose = frame.mTcw.inv();
-
-	Eigen::Matrix4d eigen_pose;
-
-	for (int i = 0; i < 4; i++) {
-		for (int k = 0; k < 4; k++) {
-			eigen_pose(i, k) = pose.at<float>(i, k);
-		}
-	}
-
-	tsdf_volume->Deintegrate(*rgbd_image, intr, eigen_pose);
-}
-
-
 //TODO: loop closure handler calling deintegration
 int main(int argc, char **argv)
 {
@@ -102,15 +78,7 @@ int main(int argc, char **argv)
 	if (argc > 2) vocabFilename = argv[2];
 	else vocabFilename = util::resolveRootPath("config/brisk_vocab.bn");
 
-	OkvisSLAMSystem slam(vocabFilename, configFilename);
-
-	std::string frameOutput;
-	if (argc > 3) frameOutput = argv[3];
-	else frameOutput = "./frames/";
-
 	cv::namedWindow("image", cv::WINDOW_AUTOSIZE);
-
-	SaveFrame * saveFrame = new SaveFrame(frameOutput);
 
 	//setup display
 	if (!MyGUI::Manager::init())
@@ -118,14 +86,6 @@ int main(int argc, char **argv)
 		fprintf(stdout, "Failed to initialize GLFW\n");
 		return -1;
 	}
-
-	printf("Camera initialization started...\n");
-	fflush(stdout);
-	D435iCamera camera;
-	camera.start();
-
-	printf("Camera-IMU initialization complete\n");
-	fflush(stdout);
 
 	//run until display is closed
 	okvis::Time start(0.0);
@@ -136,31 +96,12 @@ int main(int argc, char **argv)
 	int frame_counter = 1;
 	bool do_integration = true;
 
-	FrameAvailableHandler saveFrameHandler([&saveFrame, &frame_counter, &do_integration](MultiCameraFrame::Ptr frame) {
-		if (!do_integration || frame_counter % 3 != 0) {
-			return;
-		}
-		cv::Mat imRGB;
-		cv::Mat imDepth;
-
-		frame->getImage(imRGB, 3);
-
-		frame->getImage(imDepth, 4);
-
-		Eigen::Matrix4d transform(frame->T_WC(3));
-
-
-		saveFrame->frameWrite(imRGB, imDepth, transform, frame->frameId_);
-	});
-
-	slam.AddFrameAvailableHandler(saveFrameHandler, "saveframe");
-
 	open3d::integration::ScalableTSDFVolume * tsdf_volume = new open3d::integration::ScalableTSDFVolume(0.015, 0.05, open3d::integration::TSDFVolumeColorType::RGB8);
 
 	//intrinsics need to be set by user (currently does not read d435i_intr.yaml)
 	auto intr = open3d::camera::PinholeCameraIntrinsic(640, 480, 612.081, 612.307, 318.254, 237.246);
 
-	FrameAvailableHandler tsdfFrameHandler([&tsdf_volume, &frame_counter, &do_integration, intr](MultiCameraFrame::Ptr frame) {
+	FrameAvailableHandler tsdfFrameHandler([](MultiCameraFrame::Ptr frame) {
 		if (!do_integration || frame_counter % 3 != 0) {
 			return;
 		}
@@ -170,43 +111,13 @@ int main(int argc, char **argv)
 		cv::Mat color_mat;
 		cv::Mat depth_mat;
 
-
 		frame->getImage(color_mat, 3);
 		frame->getImage(depth_mat, 4);
-
-
-		/*int height = 480;
-		int width = 640;
-		auto color_im = std::make_shared<open3d::geometry::Image>();
-		color_im->Prepare(width, height, 3, sizeof(uint8_t));
-		uint8_t *pi = (uint8_t *)(color_im->data_.data());
-		for (int i = 0; i < height; i++) {
-			for (int k = 0; k < width; k++) {
-					
-				cv::Vec3b pixel = color_mat.at<cv::Vec3b>(i, k);
-				*pi++ = pixel[0];
-				*pi++ = pixel[1];
-				*pi++ = pixel[2];
-			}
-		}
-		auto depth_im = std::make_shared<open3d::geometry::Image>();
-		depth_im->Prepare(width, height, 1, sizeof(uint16_t));
-			
-		uint16_t * p = (uint16_t *)depth_im->data_.data();
-		for (int i = 0; i < height; i++) {
-			for (int k = 0; k < width; k++) {
-				*p++ = depth_mat.at<uint16_t>(i, k);
-			}
-		}
-		auto rgbd_image = open3d::geometry::RGBDImage::CreateFromColorAndDepth(*color_im, *depth_im, 1000.0, 2.3, false);
-		*/
 
 		auto rgbd_image = generateRGBDImageFromCV(color_mat, depth_mat);
 
 		tsdf_volume->Integrate(*rgbd_image, intr, frame->T_WC(3).inverse());
 	});
-
-	slam.AddFrameAvailableHandler(tsdfFrameHandler, "tsdfframe");
 
 	MyGUI::MeshWindow mesh_win("Mesh Viewer", 1200, 1200);
 	MyGUI::Mesh mesh_obj("mesh");
@@ -216,7 +127,7 @@ int main(int argc, char **argv)
 
 	std::shared_ptr<open3d::geometry::TriangleMesh> vis_mesh;
 
-	FrameAvailableHandler meshHandler([&tsdf_volume, &frame_counter, &do_integration, &vis_mesh, &mesh_obj](MultiCameraFrame::Ptr frame) {
+	FrameAvailableHandler meshHandler([](MultiCameraFrame::Ptr frame) {
 		if (!do_integration || frame_counter % 30 != 1) {
 			return;
 		}
@@ -227,22 +138,36 @@ int main(int argc, char **argv)
 			cout << "num triangles: " << vis_mesh->triangles_.size() << endl;
 
 			mesh_obj.update_mesh(vis_mesh->vertices_, vis_mesh->vertex_colors_, vis_mesh->triangles_);
-		
-
 	});
 
-	slam.AddFrameAvailableHandler(meshHandler, "meshupdate");
-
-	FrameAvailableHandler viewHandler([&mesh_obj, &tsdf_volume, &mesh_win, &frame_counter](MultiCameraFrame::Ptr frame) {
+	FrameAvailableHandler viewHandler([](MultiCameraFrame::Ptr frame) {
 		Eigen::Affine3d transform(frame->T_WC(3));
 		mesh_obj.set_transform(transform.inverse());
 	});
-	
-	slam.AddFrameAvailableHandler(viewHandler, "viewhandler");
 
 	// thread *app = new thread(application_thread);
 
 	cv::namedWindow("image");
+
+    //initialize zed camera
+    Camera cam;
+    InitParameters init_parameters;
+    init_parameters.coordinate_units = UNIT::METER;
+    init_parameters.camera_resolution = RESOLUTION::HD720;
+    init_parameters.depth_mode = DEPTH_MODE::ULTRA;
+    init_parameters.camera_fps = 30;
+
+    string stream_params;
+    stream_params = string(argv[1]);
+
+    setStreamParameter(init_parameters, stream_params);
+    //check if camera is opened successfully
+    auto returned_state = cam.open(init_parameters);
+    if (returned_state != ERROR_CODE::SUCCESS) {
+        print("Camera Open", returned_state, "Exit program.");
+        return EXIT_FAILURE;
+    }
+
 
 	while (MyGUI::Manager::running()) {
 
@@ -250,20 +175,26 @@ int main(int argc, char **argv)
 		//Update the display
 		MyGUI::Manager::update();
 
-		//Get current camera frame
-		MultiCameraFrame::Ptr frame(new MultiCameraFrame);
-		camera.update(*frame);
+        //do reconstruction when receiving data 
+        returned_state = cam.grab();
+        if (returned_state == ERROR_CODE::SUCCESS) {
+            // Retrieve left image
+            zed.retrieveImage(image, view_mode);
 
-		//Get or wait for IMU Data until current frame 
-		//std::cout << "frame: " << frame.timestamp_ << std::endl;
-		std::vector<ImuPair> imuData;
-		camera.getImuToTime(frame->timestamp_, imuData);
-		//std::cout << "numimu: " << imuData.size() << std::endl;
+            // Convert sl::Mat to cv::Mat (share buffer)
+            cv::Mat cvImage(image.getHeight(), image.getWidth(), (image.getChannels() == 1) ? CV_8UC1 : CV_8UC4, image.getPtr<sl::uchar1>(sl::MEM::CPU));
+            
+            //Check that selection rectangle is valid and draw it on the image
+            if (!selection_rect.isEmpty() && selection_rect.isContained(sl::Resolution(cvImage.cols, cvImage.rows)))
+                cv::rectangle(cvImage, cv::Rect(selection_rect.x,selection_rect.y,selection_rect.width,selection_rect.height),cv::Scalar(0, 255, 0), 2);
 
-		//Add data to SLAM system
-		slam.PushIMU(imuData);
-		slam.PushFrame(frame);
+            // Display image with OpenCV
+            cv::imshow(win_name, cvImage);
 
+        } else {
+            print("Error during capture : ", returned_state);
+            break;
+        }
 
 		frame_counter++;
 
@@ -305,7 +236,37 @@ int main(int argc, char **argv)
 
 	printf("\nTerminate...\n");
 	// Clean up
-	slam.ShutDown();
+	cam.close();
 	printf("\nExiting...\n");
 	return 0;
+}
+
+//convert zed mat to cv mat  https://github.com/stereolabs/zed-opencv/blob/master/cpp/src/main.cpp
+cv::Mat slMat2cvMat(Mat& input) {
+    // Mapping between MAT_TYPE and CV_TYPE
+    int cv_type = -1;
+    switch (input.getDataType()) {
+        case MAT_TYPE::F32_C1: cv_type = CV_32FC1; break;
+        case MAT_TYPE::F32_C2: cv_type = CV_32FC2; break;
+        case MAT_TYPE::F32_C3: cv_type = CV_32FC3; break;
+        case MAT_TYPE::F32_C4: cv_type = CV_32FC4; break;
+        case MAT_TYPE::U8_C1: cv_type = CV_8UC1; break;
+        case MAT_TYPE::U8_C2: cv_type = CV_8UC2; break;
+        case MAT_TYPE::U8_C3: cv_type = CV_8UC3; break;
+        case MAT_TYPE::U8_C4: cv_type = CV_8UC4; break;
+        default: break;
+    }
+
+    // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
+    // cv::Mat and sl::Mat will share a single memory structure
+    return cv::Mat(input.getHeight(), input.getWidth(), cv_type, input.getPtr<sl::uchar1>(MEM::CPU));
+}
+
+//set stream param  https://github.com/stereolabs/zed-opencv/blob/master/cpp/src/main.cpp
+void setStreamParameter(InitParameters& init_p, string& argument) {
+    vector< string> configStream = split(argument, ':');
+    String ip(configStream.at(0).c_str());
+    if (configStream.size() == 2) {
+        init_p.input.setFromStream(ip, atoi(configStream.at(1).c_str()));
+    } else init_p.input.setFromStream(ip);
 }
