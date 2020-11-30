@@ -161,8 +161,21 @@ int main(int argc, char **argv)
 	});
 
 	FrameAvailableHandler viewHandler([&mesh_obj, &tsdf_volume, &mesh_win, &frame_counter](sl::Camera &cam) {
-		Eigen::Affine3d transform(frame->T_WC(3));
-		mesh_obj.set_transform(transform.inverse());
+        //get pose
+        Pose zed_pose;
+        POSITIONAL_TRACKING_STATE tracking_state;
+
+        tracking_state = zed.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+        if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
+            // Get rotation and translation and displays it
+            Eigen::Matrix4f pose;
+            slPose2Matrix(zed_pose, pose);
+            
+            Eigen::Affine3d transform(pose);
+		    mesh_obj.set_transform(transform.inverse());
+        }else{
+            std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
+        }
 	});
 
 	// thread *app = new thread(application_thread);
