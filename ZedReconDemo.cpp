@@ -170,77 +170,6 @@ int main(int argc, char **argv)
 	float block_size = 3.0;
 	SegmentedMesh * mesh = new SegmentedMesh(voxel_size, voxel_size * 5, open3d::integration::TSDFVolumeColorType::RGB8, block_size);
 
-	FrameAvailableHandler tsdfFrameHandler([&tsdf_volume, &frame_counter, &do_integration, intr, &mesh](sl::Camera &cam) {
-		if (!do_integration || frame_counter % 3 != 0) {
-			return;
-		}
-
-		//cout << "Integrating frame number: " << frame->frameId_ << endl;
-        //get color and depth images
-        Mat tempImage;//TODO: change it to sl:mat or sth to indicate its the zed mat
-        cam.retrieveImage(tempImage, VIEW::LEFT);
-        cv::Mat color_mat = slMat2cvMat(tempImage);
-
-		cam.retrieveMeasure(tempImage, MEASURE::DEPTH);
-        cv::Mat depth_mat = slMat2cvMat(tempImage);
-
-		auto rgbd_image = generateRGBDImageFromCV(color_mat, depth_mat);
-
-        //get pose
-        Pose zed_pose;
-        POSITIONAL_TRACKING_STATE tracking_state;
-
-        tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
-        if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
-            // Get rotation and translation and displays it
-            Eigen::Matrix4f pose;
-            slPose2Matrix(zed_pose, pose);
-			tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
-			mesh->Integrate(*rgbd_image, intr, pose.inverse());
-        } else{
-            std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
-        }
-	});
-
-	MyGUI::MeshWindow mesh_win("Mesh Viewer", 1200, 1200);
-	MyGUI::Mesh mesh_obj("mesh", mesh);
-
-	mesh_win.add_object(&mesh_obj);
-
-
-	std::shared_ptr<open3d::geometry::TriangleMesh> vis_mesh;
-
-	FrameAvailableHandler meshHandler([&tsdf_volume, &frame_counter, &do_integration, &vis_mesh, &mesh_obj](sl::Camera &cam) {
-		if (!do_integration || frame_counter % 30 != 1) {
-			return;
-		}
-			
-			vis_mesh = tsdf_volume->ExtractTriangleMesh();
-
-			cout << "num vertices: " << vis_mesh->vertices_.size() << endl;
-			cout << "num triangles: " << vis_mesh->triangles_.size() << endl;
-
-			mesh_obj.update_meshes();
-	});
-
-	FrameAvailableHandler viewHandler([&mesh_obj, &tsdf_volume, &mesh_win, &frame_counter](sl::Camera &cam) {
-        //get pose
-        Pose zed_pose;
-        POSITIONAL_TRACKING_STATE tracking_state;
-
-        tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
-        if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
-            // Get rotation and translation and displays it
-            Eigen::Matrix4f pose;
-            slPose2Matrix(zed_pose, pose);
-            
-            Eigen::Affine3d transform(pose);
-		    mesh_obj.set_transform(transform.inverse());
-        } else{
-            std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
-        }
-	});
-
 	// thread *app = new thread(application_thread);
 
 	cv::namedWindow("image");
@@ -273,6 +202,82 @@ int main(int argc, char **argv)
     }
 
     Mat image;//TODO: change it to sl:mat or sth to indicate its the zed mat
+
+	FrameAvailableHandler tsdfFrameHandler([&tsdf_volume, &frame_counter, &do_integration, intr, &mesh, &cam](MultiCameraFrame::Ptr frame) {
+		if (!do_integration || frame_counter % 3 != 0) {
+			return;
+		}
+
+		//cout << "Integrating frame number: " << frame->frameId_ << endl;
+		//get color and depth images
+		Mat tempImage;//TODO: change it to sl:mat or sth to indicate its the zed mat
+		cam.retrieveImage(tempImage, VIEW::LEFT);
+		cv::Mat color_mat = slMat2cvMat(tempImage);
+
+		cam.retrieveMeasure(tempImage, MEASURE::DEPTH);
+		cv::Mat depth_mat = slMat2cvMat(tempImage);
+
+		auto rgbd_image = generateRGBDImageFromCV(color_mat, depth_mat);
+
+		//get pose
+		Pose zed_pose;
+		POSITIONAL_TRACKING_STATE tracking_state;
+
+		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+		if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
+			// Get rotation and translation and displays it
+			Eigen::Matrix4f pose;
+			slPose2Matrix(zed_pose, pose);
+			tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
+			mesh->Integrate(*rgbd_image, intr, pose.inverse());
+		}
+		else {
+			std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
+		}
+	});
+
+	MyGUI::MeshWindow mesh_win("Mesh Viewer", 1200, 1200);
+	MyGUI::Mesh mesh_obj("mesh", mesh);
+
+	mesh_win.add_object(&mesh_obj);
+
+
+	std::shared_ptr<open3d::geometry::TriangleMesh> vis_mesh;
+
+	FrameAvailableHandler meshHandler([&tsdf_volume, &frame_counter, &do_integration, &vis_mesh, &mesh_obj, &cam](MultiCameraFrame::Ptr frame) {
+		if (!do_integration || frame_counter % 30 != 1) {
+			return;
+		}
+
+		vis_mesh = tsdf_volume->ExtractTriangleMesh();
+
+		cout << "num vertices: " << vis_mesh->vertices_.size() << endl;
+		cout << "num triangles: " << vis_mesh->triangles_.size() << endl;
+
+		mesh_obj.update_meshes();
+	});
+
+	FrameAvailableHandler viewHandler([&mesh_obj, &tsdf_volume, &mesh_win, &frame_counter, &cam](MultiCameraFrame::Ptr frame) {
+		//get pose
+		Pose zed_pose;
+		POSITIONAL_TRACKING_STATE tracking_state;
+
+		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+		if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
+			// Get rotation and translation and displays it
+			Eigen::Matrix4f pose;
+			slPose2Matrix(zed_pose, pose);
+
+			Eigen::Affine3d transform(pose);
+			mesh_obj.set_transform(transform.inverse());
+		}
+		else {
+			std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
+		}
+	});
+
+
+
 	while (MyGUI::Manager::running()) {
 
 		//printf("test\n");
@@ -284,9 +289,9 @@ int main(int argc, char **argv)
         if (returned_state == ERROR_CODE::SUCCESS) {
             frame_counter++;
             //call functions to do 3d recon
-            tsdfFrameHandler(cam);
-            meshHandler(cam);
-            viewHandler(cam);
+            tsdfFrameHandler(NULL);
+            meshHandler(NULL);
+            viewHandler(NULL);
             //display image
             cam.retrieveImage(image, VIEW::LEFT);
             cv::Mat imBGR = slMat2cvMat(image);
