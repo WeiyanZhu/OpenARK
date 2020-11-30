@@ -14,6 +14,7 @@
 #include "Open3D/IO/ClassIO/ImageIO.h"
 
 using namespace ark;
+using namespace sl;
 
 std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat color_mat, cv::Mat depth_mat) {
 
@@ -57,8 +58,13 @@ int main(int argc, char **argv)
 {
 
 	if (argc > 5) {
-		std::cerr << "Usage: ./" << argv[0] << " configuration-yaml-file [vocabulary-file] [skip-first-seconds]" << std::endl
+		std::cerr << "Usage: ./" << argv[0] << "ip-address configuration-yaml-file [vocabulary-file] [skip-first-seconds]" << std::endl
 			<< "Args given: " << argc << std::endl;
+		return -1;
+	}
+
+    if (argc < 2) {
+		std::cerr << "Please input ip address" << std::endl;
 		return -1;
 	}
 
@@ -68,14 +74,15 @@ int main(int argc, char **argv)
 	if (argc == 5) {
 		deltaT = okvis::Duration(atof(argv[4]));
 	}
-
+    //initialize ip
+    std::string ipParam = string(argv[1]);
 	// read configuration file
 	std::string configFilename;
-	if (argc > 1) configFilename = argv[1];
+	if (argc > 2) configFilename = argv[2];
 	else configFilename = util::resolveRootPath("config/d435i_intr.yaml");
 
 	std::string vocabFilename;
-	if (argc > 2) vocabFilename = argv[2];
+	if (argc > 3) vocabFilename = argv[3];
 	else vocabFilename = util::resolveRootPath("config/brisk_vocab.bn");
 
 	cv::namedWindow("image", cv::WINDOW_AUTOSIZE);
@@ -157,7 +164,6 @@ int main(int argc, char **argv)
     init_parameters.depth_mode = DEPTH_MODE::ULTRA;
     init_parameters.camera_fps = 30;
 
-    string stream_params;
     stream_params = string(argv[1]);
 
     setStreamParameter(init_parameters, stream_params);
