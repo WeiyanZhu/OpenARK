@@ -108,22 +108,35 @@ int main(int argc, char **argv)
 	//intrinsics need to be set by user (currently does not read d435i_intr.yaml)
 	auto intr = open3d::camera::PinholeCameraIntrinsic(640, 480, 612.081, 612.307, 318.254, 237.246);
 
-	FrameAvailableHandler tsdfFrameHandler([](MultiCameraFrame::Ptr frame) {
+	FrameAvailableHandler tsdfFrameHandler([&tsdf_volume, &frame_counter, &do_integration, intr](sl::Camera &cam) {
 		if (!do_integration || frame_counter % 3 != 0) {
 			return;
 		}
 
-		cout << "Integrating frame number: " << frame->frameId_ << endl;
+		//cout << "Integrating frame number: " << frame->frameId_ << endl;
+        //get color and depth images
+        Mat tempImage;//TODO: change it to sl:mat or sth to indicate its the zed mat
+        cam.retrieveImage(tempImage, VIEW::LEFT);
+        cv::Mat color_mat = slMat2cvMat(tempImage);
 
-		cv::Mat color_mat;
-		cv::Mat depth_mat;
-
-		frame->getImage(color_mat, 3);
-		frame->getImage(depth_mat, 4);
+		cam.retrieveMeasure(tempImage, MEASURE::DEPTH);
+        cv::Mat depth_mat = slMat2cvMat(tempImage);
 
 		auto rgbd_image = generateRGBDImageFromCV(color_mat, depth_mat);
 
-		tsdf_volume->Integrate(*rgbd_image, intr, frame->T_WC(3).inverse());
+        //get pose
+        Pose zed_pose;
+        POSITIONAL_TRACKING_STATE tracking_state;
+
+        tracking_state = zed.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+        if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
+            // Get rotation and translation and displays it
+            Eigen::Matrix4f pose;
+            slPose2Matrix(zed_pose, pose);
+            tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
+        }else{
+            std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
+        }
 	});
 
 	MyGUI::MeshWindow mesh_win("Mesh Viewer", 1200, 1200);
@@ -134,7 +147,7 @@ int main(int argc, char **argv)
 
 	std::shared_ptr<open3d::geometry::TriangleMesh> vis_mesh;
 
-	FrameAvailableHandler meshHandler([](MultiCameraFrame::Ptr frame) {
+	FrameAvailableHandler meshHandler([&tsdf_volume, &frame_counter, &do_integration, &vis_mesh, &mesh_obj](sl::Camera &cam) {
 		if (!do_integration || frame_counter % 30 != 1) {
 			return;
 		}
@@ -147,7 +160,7 @@ int main(int argc, char **argv)
 			mesh_obj.update_mesh(vis_mesh->vertices_, vis_mesh->vertex_colors_, vis_mesh->triangles_);
 	});
 
-	FrameAvailableHandler viewHandler([](MultiCameraFrame::Ptr frame) {
+	FrameAvailableHandler viewHandler([&mesh_obj, &tsdf_volume, &mesh_win, &frame_counter](sl::Camera &cam) {
 		Eigen::Affine3d transform(frame->T_WC(3));
 		mesh_obj.set_transform(transform.inverse());
 	});
@@ -164,17 +177,26 @@ int main(int argc, char **argv)
     init_parameters.depth_mode = DEPTH_MODE::ULTRA;
     init_parameters.camera_fps = 30;
 
-    stream_params = string(argv[1]);
+    setStreamParameter(init_parameters, ipParam);
 
-    setStreamParameter(init_parameters, stream_params);
     //check if camera is opened successfully
     auto returned_state = cam.open(init_parameters);
     if (returned_state != ERROR_CODE::SUCCESS) {
         print("Camera Open", returned_state, "Exit program.");
-        return EXIT_FAILURE;
+        return -1;//TODO: change to exit param error code
     }
 
+    PositionalTrackingParameters positional_tracking_param;
+    positional_tracking_param.enable_area_memory = true;
+    // enable Positional Tracking
+    returned_state = cam.enablePositionalTracking(positional_tracking_param);
+    if (returned_state != ERROR_CODE::SUCCESS) {
+        print("Enabling positionnal tracking failed: ", returned_state);
+        cam.close();
+        return -1;//TODO: change to exit param error code
+    }
 
+    Mat image;//TODO: change it to sl:mat or sth to indicate its the zed mat
 	while (MyGUI::Manager::running()) {
 
 		//printf("test\n");
@@ -184,34 +206,21 @@ int main(int argc, char **argv)
         //do reconstruction when receiving data 
         returned_state = cam.grab();
         if (returned_state == ERROR_CODE::SUCCESS) {
-            // Retrieve left image
-            zed.retrieveImage(image, view_mode);
+            frame_counter++;
+            //call functions to do 3d recon
+            tsdfFrameHandler(cam);
+            meshHandler(cam);
+            viewHandler(cam);
+            //display image
+            cam.retrieveImage(image, VIEW::LEFT);
+            cv::Mat imBGR = slMat2cvMat(image);
 
-            // Convert sl::Mat to cv::Mat (share buffer)
-            cv::Mat cvImage(image.getHeight(), image.getWidth(), (image.getChannels() == 1) ? CV_8UC1 : CV_8UC4, image.getPtr<sl::uchar1>(sl::MEM::CPU));
-            
-            //Check that selection rectangle is valid and draw it on the image
-            if (!selection_rect.isEmpty() && selection_rect.isContained(sl::Resolution(cvImage.cols, cvImage.rows)))
-                cv::rectangle(cvImage, cv::Rect(selection_rect.x,selection_rect.y,selection_rect.width,selection_rect.height),cv::Scalar(0, 255, 0), 2);
-
-            // Display image with OpenCV
-            cv::imshow(win_name, cvImage);
+            cv::imshow("image", imBGR);
 
         } else {
             print("Error during capture : ", returned_state);
             break;
         }
-
-		frame_counter++;
-
-		cv::Mat imRGB;
-		frame->getImage(imRGB, 3);
-
-		cv::Mat imBGR;
-
-		cv::cvtColor(imRGB, imBGR, CV_RGB2BGR);
-
-		cv::imshow("image", imBGR);
 
 		int k = cv::waitKey(4);
 		if (k == ' ') {
@@ -242,6 +251,7 @@ int main(int argc, char **argv)
 
 	printf("\nTerminate...\n");
 	// Clean up
+    cam.disablePositionalTracking();
 	cam.close();
 	printf("\nExiting...\n");
 	return 0;
@@ -275,4 +285,15 @@ void setStreamParameter(InitParameters& init_p, string& argument) {
     if (configStream.size() == 2) {
         init_p.input.setFromStream(ip, atoi(configStream.at(1).c_str()));
     } else init_p.input.setFromStream(ip);
+}
+
+void slPose2Matrix(&Pose pose, &Eigen::Matrix4d matrix)
+{
+	Translation translation = pose.getTranslation();
+	Rotation rotation = pose.getRotationMatrix();
+	Eigen::Vector3f T_SL(translation[0], translation[1], translation[2]);
+	Eigen::Map<Eigen::Matrix3f>R_SL(&rotation.transpose(rotation).r[0]);
+	matrix = Eigen::Matrix4f::Identity();
+	matrix.block<3, 3>(0, 0) = R_SL;
+	matrix.block<3, 1>(0, 3) = T_SL;
 }
