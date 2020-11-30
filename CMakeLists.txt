@@ -20,6 +20,7 @@ set( DEMO_NAME "OpenARK_hand_demo" )
 set( AVATAR_DEMO_NAME "OpenARK_avatar_demo")
 set( SLAM_DEMO_NAME "OpenARK_SLAM_demo")
 set( 3DRECON_DATA_NAME "3dRecon_Data_Recording")
+set( ZED_3DRECON_DATA_NAME "Zed_3dRecon_Data_Recording")
 set( DATA_RECORDING_NAME "OpenARK_data_recording")
 set( SLAM_RECORDING_NAME "OpenARK_slam_recording")
 set( SLAM_REPLAYING_NAME "OpenARK_slam_replaying")
@@ -30,6 +31,7 @@ option( BUILD_HAND_DEMO "BUILD_HAND_DEMO" OFF )
 option( BUILD_AVATAR_DEMO "BUILD_AVATAR_DEMO" OFF)
 option( BUILD_SLAM_DEMO "BUILD_SLAM_DEMO" ON)
 option( BUILD_3DRECON_DEMO "BUILD_3DRECON_DEMO" ON)
+option( BUILD_ZED_3DRECON_DEMO "BUILD_ZED_3DRECON_DEMO" ON)
 option( BUILD_DATA_RECORDING "BUILD_DATA_RECORDING" OFF)
 option( BUILD_SLAM_RECORDING "BUILD_SLAM_RECORDING" ON)
 option( BUILD_SLAM_REPLAYING "BUILD_SLAM_REPLAYING" ON)
@@ -228,6 +230,32 @@ include_directories(
   ${CERES_INCLUDE_DIRS}
 )
 
+# require ZED 2
+IF(WIN32) # Windows
+    if (CMAKE_CL_64) 
+        SET(ZED_INCLUDE_DIRS $ENV{ZED_INCLUDE_DIRS})
+        SET(ZED_LIBRARIES $ENV{ZED_LIBRARIES_64})
+        SET(ZED_LIBRARY_DIR $ENV{ZED_LIBRARY_DIR})
+    else()
+        message(FATAL_ERROR "You've selected the 32bit version of ${CMAKE_GENERATOR}. \n Please delete the cache (file->Delete Cache) and use the 64bit version. (${CMAKE_GENERATOR} Win64)")
+    endif()
+ELSE() # Linux
+    find_package(ZED 2 REQUIRED)
+    SET(SPECIAL_OS_LIBS "pthread")
+ENDIF(WIN32)
+
+find_package(CUDA ${VERSION_REQ_CUDA} REQUIRED)
+
+include_directories(${CUDA_INCLUDE_DIRS})
+include_directories(${ZED_INCLUDE_DIRS})
+message(STATUS "found zed2 ${ZED_INCLUDE_DIRS} ${ZED_LIBRARY_DIR}")
+#include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+link_directories(${ZED_LIBRARY_DIR})
+link_directories(${CUDA_LIBRARY_DIRS})
+
+# Add the required libraries for linking:
+
 set(
   DEPENDENCIES
   ${OpenCV_LIBRARIES}
@@ -358,7 +386,8 @@ else()
   include_directories( ${realsense2_INCLUDE_DIR} )
   set( SOURCES ${SOURCES} RS2Camera.cpp D435iCamera.cpp )
   set( HEADERS ${HEADERS} ${INCLUDE_DIR}/RS2Camera.h ${INCLUDE_DIR}/D435iCamera.h ${INCLUDE_DIR}/D435iCalibWriter.h )
-  set( DEPENDENCIES ${DEPENDENCIES} ${realsense2_LIBRARY} )
+  set( DEPENDENCIES ${DEPENDENCIES} ${realsense2_LIBRARY} ${ZED_LIBRARIES} ${SPECIAL_OS_LIBS}
+                        ${CUDA_LIBRARIES} ${CUDA_npps_LIBRARY} ${CUDA_nppi_LIBRARY})
 endif( NOT realsense2_FOUND )
 
 if( NOT RSSDK_FOUND )
@@ -482,6 +511,18 @@ if( ${BUILD_3DRECON_DEMO} AND realsense2_FOUND )
         target_link_libraries( ${3DRECON_DATA_NAME} ${DEPENDENCIES} ${LIB_NAME} GLU GL glut )
     endif ( MSVC )
 endif( ${BUILD_3DRECON_DEMO} AND realsense2_FOUND )
+
+if( ${BUILD_ZED_3DRECON_DEMO} AND realsense2_FOUND )
+    add_executable( ${ZED_3DRECON_DATA_NAME} ZedReconDemo.cpp )
+    target_include_directories( ${ZED_3DRECON_DATA_NAME} PRIVATE ${INCLUDE_DIR} )
+    set_target_properties( ${ZED_3DRECON_DATA_NAME} PROPERTIES OUTPUT_NAME ${ZED_3DRECON_DATA_NAME} )
+    set_target_properties( ${ZED_3DRECON_DATA_NAME} PROPERTIES COMPILE_FLAGS ${TARGET_COMPILE_FLAGS} )
+    if ( MSVC )
+        target_link_libraries( ${ZED_3DRECON_DATA_NAME} ${DEPENDENCIES} ${LIB_NAME} )
+    else()
+        target_link_libraries( ${ZED_3DRECON_DATA_NAME} ${DEPENDENCIES} ${LIB_NAME} GLU GL glut )
+    endif ( MSVC )
+endif( ${BUILD_ZED_3DRECON_DEMO} AND realsense2_FOUND )
 
 
 if( ${BUILD_DATA_RECORDING} )

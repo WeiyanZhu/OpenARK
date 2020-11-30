@@ -53,6 +53,63 @@ std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat col
 	return rgbd_image;
 }
 
+//convert zed mat to cv mat  https://github.com/stereolabs/zed-opencv/blob/master/cpp/src/main.cpp
+cv::Mat slMat2cvMat(Mat& input) {
+	// Mapping between MAT_TYPE and CV_TYPE
+	int cv_type = -1;
+	switch (input.getDataType()) {
+	case MAT_TYPE::F32_C1: cv_type = CV_32FC1; break;
+	case MAT_TYPE::F32_C2: cv_type = CV_32FC2; break;
+	case MAT_TYPE::F32_C3: cv_type = CV_32FC3; break;
+	case MAT_TYPE::F32_C4: cv_type = CV_32FC4; break;
+	case MAT_TYPE::U8_C1: cv_type = CV_8UC1; break;
+	case MAT_TYPE::U8_C2: cv_type = CV_8UC2; break;
+	case MAT_TYPE::U8_C3: cv_type = CV_8UC3; break;
+	case MAT_TYPE::U8_C4: cv_type = CV_8UC4; break;
+	default: break;
+	}
+
+	// Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
+	// cv::Mat and sl::Mat will share a single memory structure
+	return cv::Mat(input.getHeight(), input.getWidth(), cv_type, input.getPtr<sl::uchar1>(MEM::CPU));
+}
+
+vector< string> split(const string& s, char seperator) {
+	vector< string> output;
+	string::size_type prev_pos = 0, pos = 0;
+
+	while ((pos = s.find(seperator, pos)) != string::npos) {
+		string substring(s.substr(prev_pos, pos - prev_pos));
+		output.push_back(substring);
+		prev_pos = ++pos;
+	}
+
+	output.push_back(s.substr(prev_pos, pos - prev_pos));
+	return output;
+}
+
+//set stream param  https://github.com/stereolabs/zed-opencv/blob/master/cpp/src/main.cpp
+void setStreamParameter(InitParameters& init_p, string& argument) {
+	vector< string> configStream = split(argument, ':');
+	String ip(configStream.at(0).c_str());
+	if (configStream.size() == 2) {
+		init_p.input.setFromStream(ip, atoi(configStream.at(1).c_str()));
+	}
+	else init_p.input.setFromStream(ip);
+}
+
+void slPose2Matrix(Pose& pose, Eigen::Matrix4d matrix)
+{
+	Translation translation = pose.getTranslation();
+	Rotation rotation = pose.getRotationMatrix();
+	Eigen::Vector3f T_SL(translation[0], translation[1], translation[2]);
+	Eigen::Map<Eigen::Matrix3f>R_SL(&rotation.transpose(rotation).r[0]);
+	matrix = Eigen::Matrix4f::Identity();
+	matrix.block<3, 3>(0, 0) = R_SL;
+	matrix.block<3, 1>(0, 3) = T_SL;
+}
+
+
 //TODO: loop closure handler calling deintegration
 int main(int argc, char **argv)
 {
@@ -106,9 +163,14 @@ int main(int argc, char **argv)
 	open3d::integration::ScalableTSDFVolume * tsdf_volume = new open3d::integration::ScalableTSDFVolume(0.015, 0.05, open3d::integration::TSDFVolumeColorType::RGB8);
 
 	//intrinsics need to be set by user (currently does not read d435i_intr.yaml)
-	auto intr = open3d::camera::PinholeCameraIntrinsic(640, 480, 612.081, 612.307, 318.254, 237.246);
+	auto intr = open3d::camera::PinholeCameraIntrinsic(640, 480, 260.560, 347.414, 329.482, 238.174);
 
-	FrameAvailableHandler tsdfFrameHandler([&tsdf_volume, &frame_counter, &do_integration, intr](sl::Camera &cam) {
+	// TODO: read from config file instead of hardcoding
+	float voxel_size = 0.03;
+	float block_size = 3.0;
+	SegmentedMesh * mesh = new SegmentedMesh(voxel_size, voxel_size * 5, open3d::integration::TSDFVolumeColorType::RGB8, block_size);
+
+	FrameAvailableHandler tsdfFrameHandler([&tsdf_volume, &frame_counter, &do_integration, intr, &mesh](sl::Camera &cam) {
 		if (!do_integration || frame_counter % 3 != 0) {
 			return;
 		}
@@ -128,19 +190,20 @@ int main(int argc, char **argv)
         Pose zed_pose;
         POSITIONAL_TRACKING_STATE tracking_state;
 
-        tracking_state = zed.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+        tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
         if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
             // Get rotation and translation and displays it
             Eigen::Matrix4f pose;
             slPose2Matrix(zed_pose, pose);
-            tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
-        }else{
+			tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
+			mesh->Integrate(*rgbd_image, intr, pose.inverse());
+        } else{
             std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
         }
 	});
 
 	MyGUI::MeshWindow mesh_win("Mesh Viewer", 1200, 1200);
-	MyGUI::Mesh mesh_obj("mesh");
+	MyGUI::Mesh mesh_obj("mesh", mesh);
 
 	mesh_win.add_object(&mesh_obj);
 
@@ -157,7 +220,7 @@ int main(int argc, char **argv)
 			cout << "num vertices: " << vis_mesh->vertices_.size() << endl;
 			cout << "num triangles: " << vis_mesh->triangles_.size() << endl;
 
-			mesh_obj.update_mesh(vis_mesh->vertices_, vis_mesh->vertex_colors_, vis_mesh->triangles_);
+			mesh_obj.update_meshes();
 	});
 
 	FrameAvailableHandler viewHandler([&mesh_obj, &tsdf_volume, &mesh_win, &frame_counter](sl::Camera &cam) {
@@ -165,7 +228,7 @@ int main(int argc, char **argv)
         Pose zed_pose;
         POSITIONAL_TRACKING_STATE tracking_state;
 
-        tracking_state = zed.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+        tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
         if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
             // Get rotation and translation and displays it
             Eigen::Matrix4f pose;
@@ -173,7 +236,7 @@ int main(int argc, char **argv)
             
             Eigen::Affine3d transform(pose);
 		    mesh_obj.set_transform(transform.inverse());
-        }else{
+        } else{
             std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
         }
 	});
@@ -195,7 +258,7 @@ int main(int argc, char **argv)
     //check if camera is opened successfully
     auto returned_state = cam.open(init_parameters);
     if (returned_state != ERROR_CODE::SUCCESS) {
-        print("Camera Open", returned_state, "Exit program.");
+        std::cerr << "Camera Open " << returned_state << ". Exit program." << std:: endl;
         return -1;//TODO: change to exit param error code
     }
 
@@ -204,7 +267,7 @@ int main(int argc, char **argv)
     // enable Positional Tracking
     returned_state = cam.enablePositionalTracking(positional_tracking_param);
     if (returned_state != ERROR_CODE::SUCCESS) {
-        print("Enabling positionnal tracking failed: ", returned_state);
+        std::cerr << "Enabling positional tracking failed: " << returned_state << std::endl;
         cam.close();
         return -1;//TODO: change to exit param error code
     }
@@ -231,7 +294,7 @@ int main(int argc, char **argv)
             cv::imshow("image", imBGR);
 
         } else {
-            print("Error during capture : ", returned_state);
+			std::cerr << "Error during capture : " << returned_state << std::endl;
             break;
         }
 
@@ -268,45 +331,4 @@ int main(int argc, char **argv)
 	cam.close();
 	printf("\nExiting...\n");
 	return 0;
-}
-
-//convert zed mat to cv mat  https://github.com/stereolabs/zed-opencv/blob/master/cpp/src/main.cpp
-cv::Mat slMat2cvMat(Mat& input) {
-    // Mapping between MAT_TYPE and CV_TYPE
-    int cv_type = -1;
-    switch (input.getDataType()) {
-        case MAT_TYPE::F32_C1: cv_type = CV_32FC1; break;
-        case MAT_TYPE::F32_C2: cv_type = CV_32FC2; break;
-        case MAT_TYPE::F32_C3: cv_type = CV_32FC3; break;
-        case MAT_TYPE::F32_C4: cv_type = CV_32FC4; break;
-        case MAT_TYPE::U8_C1: cv_type = CV_8UC1; break;
-        case MAT_TYPE::U8_C2: cv_type = CV_8UC2; break;
-        case MAT_TYPE::U8_C3: cv_type = CV_8UC3; break;
-        case MAT_TYPE::U8_C4: cv_type = CV_8UC4; break;
-        default: break;
-    }
-
-    // Since cv::Mat data requires a uchar* pointer, we get the uchar1 pointer from sl::Mat (getPtr<T>())
-    // cv::Mat and sl::Mat will share a single memory structure
-    return cv::Mat(input.getHeight(), input.getWidth(), cv_type, input.getPtr<sl::uchar1>(MEM::CPU));
-}
-
-//set stream param  https://github.com/stereolabs/zed-opencv/blob/master/cpp/src/main.cpp
-void setStreamParameter(InitParameters& init_p, string& argument) {
-    vector< string> configStream = split(argument, ':');
-    String ip(configStream.at(0).c_str());
-    if (configStream.size() == 2) {
-        init_p.input.setFromStream(ip, atoi(configStream.at(1).c_str()));
-    } else init_p.input.setFromStream(ip);
-}
-
-void slPose2Matrix(&Pose pose, &Eigen::Matrix4d matrix)
-{
-	Translation translation = pose.getTranslation();
-	Rotation rotation = pose.getRotationMatrix();
-	Eigen::Vector3f T_SL(translation[0], translation[1], translation[2]);
-	Eigen::Map<Eigen::Matrix3f>R_SL(&rotation.transpose(rotation).r[0]);
-	matrix = Eigen::Matrix4f::Identity();
-	matrix.block<3, 3>(0, 0) = R_SL;
-	matrix.block<3, 1>(0, 3) = T_SL;
 }

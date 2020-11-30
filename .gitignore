@@ -292,3 +292,4 @@ include/Version.h
 # Cake - Uncomment if you are using it
 # tools/**
 # !tools/packages.config
+sl_zed64.lib
