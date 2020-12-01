@@ -102,10 +102,10 @@ void slPose2Matrix(Pose& pose, Eigen::Matrix4d matrix)
 {
 	Translation translation = pose.getTranslation();
 	Rotation rotation = pose.getRotationMatrix();
-	Eigen::Vector3f T_SL(translation[0], translation[1], translation[2]);
+	Eigen::Vector3d T_SL(translation[0], translation[1], translation[2]);
 	Eigen::Map<Eigen::Matrix3f>R_SL(&rotation.transpose(rotation).r[0]);
-	matrix = Eigen::Matrix4f::Identity();
-	matrix.block<3, 3>(0, 0) = R_SL;
+	matrix = Eigen::Matrix4d::Identity();
+	matrix.block<3, 3>(0, 0) = R_SL.cast<double>();
 	matrix.block<3, 1>(0, 3) = T_SL;
 }
 
@@ -226,7 +226,7 @@ int main(int argc, char **argv)
 		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
 		if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
 			// Get rotation and translation and displays it
-			Eigen::Matrix4f pose;
+			Eigen::Matrix4d pose;
 			slPose2Matrix(zed_pose, pose);
 			tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
 			mesh->Integrate(*rgbd_image, intr, pose.inverse());
@@ -265,7 +265,7 @@ int main(int argc, char **argv)
 		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
 		if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
 			// Get rotation and translation and displays it
-			Eigen::Matrix4f pose;
+			Eigen::Matrix4d pose;
 			slPose2Matrix(zed_pose, pose);
 
 			Eigen::Affine3d transform(pose);
