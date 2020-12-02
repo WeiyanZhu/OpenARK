@@ -22,8 +22,8 @@ std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat col
 	int height = s.height;
 	int width = s.width;*/
 
-	int height = 480;
-	int width = 640;
+	int height = 720;
+	int width = 1280;
 
 	auto color_im = std::make_shared<open3d::geometry::Image>();
 	color_im->Prepare(width, height, 3, sizeof(uint8_t));
@@ -49,7 +49,9 @@ std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat col
 
 	for (int i = 0; i < height; i++) {
 		for (int k = 0; k < width; k++) {
-			*p++ = depth_mat.at<uint16_t>(i, k);
+			*p++ = (uint16_t)(depth_mat.at<float>(i, k) * 1000); // depth_mat.at<uint16_t>(i, k);
+			//std::cout << (uint16_t)(depth_mat.at<float>(i, k) * 1000) << std::endl;
+			//std::cout <<"F" << depth_mat.at<float>(i, k) << std::endl;
 		}
 	}
 
@@ -167,7 +169,7 @@ int main(int argc, char **argv)
 	open3d::integration::ScalableTSDFVolume * tsdf_volume = new open3d::integration::ScalableTSDFVolume(0.015, 0.05, open3d::integration::TSDFVolumeColorType::RGB8);
 
 	//intrinsics need to be set by user (currently does not read d435i_intr.yaml)
-	auto intr = open3d::camera::PinholeCameraIntrinsic(640, 480, 260.560, 347.414, 329.482, 238.174);
+	auto intr = open3d::camera::PinholeCameraIntrinsic(1280, 720, 521.0787963867188, 521.0787963867188, 658.9640502929688, 357.2626647949219);
 
 	// TODO: read from config file instead of hardcoding
 	float voxel_size = 0.03;
@@ -187,7 +189,8 @@ int main(int argc, char **argv)
     init_parameters.camera_fps = 30;
 
 	/* FOR STREAMING, UNCOMMENT */
-   // setStreamParameter(init_parameters, ipParam);
+   //setStreamParameter(init_parameters, ipParam);
+
 
     //check if camera is opened successfully
     auto returned_state = cam.open(init_parameters);
@@ -215,14 +218,14 @@ int main(int argc, char **argv)
 
 		//cout << "Integrating frame number: " << frame->frameId_ << endl;
 		//get color and depth images
-		sl::Mat tempImageLeft;//TODO: change it to sl:mat or sth to indicate its the zed mat
-		sl::Mat tempImageDepth;//TODO: change it to sl:mat or sth to indicate its the zed mat
+		sl::Mat tempImageLeft(1280, 720, MAT_TYPE::U8_C4);//TODO: change it to sl:mat or sth to indicate its the zed mat
+		sl::Mat tempImageDepth(1280, 720, MAT_TYPE::F32_C1);//TODO: change it to sl:mat or sth to indicate its the zed mat
 		
-		cam.retrieveImage(tempImageLeft, VIEW::LEFT);
 		cv::Mat color_mat = slMat2cvMat(tempImageLeft);
-
-		cam.retrieveMeasure(tempImageDepth, MEASURE::DEPTH);
+		cam.retrieveImage(tempImageLeft, VIEW::LEFT);
+		
 		cv::Mat depth_mat = slMat2cvMat(tempImageDepth);
+		cam.retrieveMeasure(tempImageDepth, MEASURE::DEPTH);
 
 		auto rgbd_image = generateRGBDImageFromCV(color_mat, depth_mat);
 
@@ -245,13 +248,13 @@ int main(int argc, char **argv)
 			Eigen::Matrix4d pose;
 			slPose2Matrix(zed_pose, pose);
 			try {
-				tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
+				tsdf_volume->Integrate(*rgbd_image, intr, pose);
 
 			} catch (std::exception& e) {
 				std::cout << "exception: " << e.what() << std::endl;
 			}
 
-			//mesh->Integrate(*rgbd_image, intr, pose.inverse());
+			mesh->Integrate(*rgbd_image, intr, pose);
 		}
 		else {
 			std::cerr << "1. Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
@@ -300,7 +303,7 @@ int main(int argc, char **argv)
 			slPose2Matrix(zed_pose, pose);
 
 			Eigen::Affine3d transform(pose);
-			mesh_obj.set_transform(transform.inverse());
+			mesh_obj.set_transform(transform);
 		}
 		else {
 			std::cerr << "2. Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
