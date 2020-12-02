@@ -18,9 +18,12 @@ using namespace sl;
 
 std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat color_mat, cv::Mat depth_mat) {
 
-	cv::Size s = color_mat.size();
+	/*cv::Size s = color_mat.size();
 	int height = s.height;
-	int width = s.width;
+	int width = s.width;*/
+
+	int height = 480;
+	int width = 640;
 
 	auto color_im = std::make_shared<open3d::geometry::Image>();
 	color_im->Prepare(width, height, 3, sizeof(uint8_t));
@@ -241,14 +244,12 @@ int main(int argc, char **argv)
 			// Get rotation and translation and displays it
 			Eigen::Matrix4d pose;
 			slPose2Matrix(zed_pose, pose);
-			std::cout << "here" << std::endl;
 			try {
 				tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
 
 			} catch (std::exception& e) {
 				std::cout << "exception: " << e.what() << std::endl;
 			}
-			std::cout << "here1" << std::endl;
 
 			//mesh->Integrate(*rgbd_image, intr, pose.inverse());
 		}
