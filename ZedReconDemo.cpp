@@ -18,8 +18,9 @@ using namespace sl;
 
 std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat color_mat, cv::Mat depth_mat) {
 
-	int height = 480;
-	int width = 640;
+	cv::Size s = color_mat.size();
+	int height = s.height;
+	int width = s.width;
 
 	auto color_im = std::make_shared<open3d::geometry::Image>();
 	color_im->Prepare(width, height, 3, sizeof(uint8_t));
@@ -98,7 +99,7 @@ void setStreamParameter(InitParameters& init_p, string& argument) {
 	else init_p.input.setFromStream(ip);
 }
 
-void slPose2Matrix(Pose& pose, Eigen::Matrix4d matrix)
+void slPose2Matrix(Pose& pose, Eigen::Matrix4d& matrix)
 {
 	Translation translation = pose.getTranslation();
 	Rotation rotation = pose.getRotationMatrix();
@@ -182,7 +183,8 @@ int main(int argc, char **argv)
     init_parameters.depth_mode = DEPTH_MODE::ULTRA;
     init_parameters.camera_fps = 30;
 
-    setStreamParameter(init_parameters, ipParam);
+	/* FOR STREAMING, UNCOMMENT */
+   // setStreamParameter(init_parameters, ipParam);
 
     //check if camera is opened successfully
     auto returned_state = cam.open(init_parameters);
@@ -210,12 +212,14 @@ int main(int argc, char **argv)
 
 		//cout << "Integrating frame number: " << frame->frameId_ << endl;
 		//get color and depth images
-		Mat tempImage;//TODO: change it to sl:mat or sth to indicate its the zed mat
-		cam.retrieveImage(tempImage, VIEW::LEFT);
-		cv::Mat color_mat = slMat2cvMat(tempImage);
+		sl::Mat tempImageLeft;//TODO: change it to sl:mat or sth to indicate its the zed mat
+		sl::Mat tempImageDepth;//TODO: change it to sl:mat or sth to indicate its the zed mat
+		
+		cam.retrieveImage(tempImageLeft, VIEW::LEFT);
+		cv::Mat color_mat = slMat2cvMat(tempImageLeft);
 
-		cam.retrieveMeasure(tempImage, MEASURE::DEPTH);
-		cv::Mat depth_mat = slMat2cvMat(tempImage);
+		cam.retrieveMeasure(tempImageDepth, MEASURE::DEPTH);
+		cv::Mat depth_mat = slMat2cvMat(tempImageDepth);
 
 		auto rgbd_image = generateRGBDImageFromCV(color_mat, depth_mat);
 
@@ -224,15 +228,32 @@ int main(int argc, char **argv)
 		POSITIONAL_TRACKING_STATE tracking_state;
 
 		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+		/*while (tracking_state == POSITIONAL_TRACKING_STATE::SEARCHING) {
+			std::cout << "Camera Searching..." << std::endl;
+			tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+		}*/
+
+		if (cam.grab() != ERROR_CODE::SUCCESS) {
+			std::cerr << "Cannot get input from zed camera" << std::endl;
+		}
+
 		if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
 			// Get rotation and translation and displays it
 			Eigen::Matrix4d pose;
 			slPose2Matrix(zed_pose, pose);
-			tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
-			mesh->Integrate(*rgbd_image, intr, pose.inverse());
+			std::cout << "here" << std::endl;
+			try {
+				tsdf_volume->Integrate(*rgbd_image, intr, pose.inverse());
+
+			} catch (std::exception& e) {
+				std::cout << "exception: " << e.what() << std::endl;
+			}
+			std::cout << "here1" << std::endl;
+
+			//mesh->Integrate(*rgbd_image, intr, pose.inverse());
 		}
 		else {
-			std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
+			std::cerr << "1. Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
 		}
 	});
 
@@ -261,8 +282,17 @@ int main(int argc, char **argv)
 		//get pose
 		Pose zed_pose;
 		POSITIONAL_TRACKING_STATE tracking_state;
-
+		
 		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+		/*while (tracking_state == POSITIONAL_TRACKING_STATE::SEARCHING) {
+			std::cout << "Camera Searching..." << std::endl;
+			tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+		}*/
+
+		if (cam.grab() != ERROR_CODE::SUCCESS) {
+			std::cerr << "Cannot get input from zed camera" << std::endl;
+		}
+
 		if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
 			// Get rotation and translation and displays it
 			Eigen::Matrix4d pose;
@@ -272,7 +302,8 @@ int main(int argc, char **argv)
 			mesh_obj.set_transform(transform.inverse());
 		}
 		else {
-			std::cerr << "Positional tracking state wrong, cannot intergrate frame." << std::endl;
+			std::cerr << "2. Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
+
 		}
 	});
 
