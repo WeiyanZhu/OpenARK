@@ -49,13 +49,15 @@ std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat col
 
 	for (int i = 0; i < height; i++) {
 		for (int k = 0; k < width; k++) {
-			*p++ = (uint16_t)(depth_mat.at<float>(i, k) * 1000); // depth_mat.at<uint16_t>(i, k);
+			*p++ = depth_mat.at<uint16_t>(i, k);; // depth_mat.at<uint16_t>(i, k);
 			//std::cout << (uint16_t)(depth_mat.at<float>(i, k) * 1000) << std::endl;
 			//std::cout <<"F" << depth_mat.at<float>(i, k) << std::endl;
 		}
 	}
 
-	auto rgbd_image = open3d::geometry::RGBDImage::CreateFromColorAndDepth(*color_im, *depth_im, 1000.0, 2.3, false);
+	auto rgbd_image = open3d::geometry::RGBDImage::CreateFromColorAndDepth(*color_im, *depth_im, 1000.0, 10, false);
+
+
 	return rgbd_image;
 }
 
@@ -174,7 +176,7 @@ int main(int argc, char **argv)
 	// TODO: read from config file instead of hardcoding
 	float voxel_size = 0.03;
 	float block_size = 3.0;
-	SegmentedMesh * mesh = new SegmentedMesh(voxel_size, voxel_size * 5, open3d::integration::TSDFVolumeColorType::RGB8, block_size);
+	SegmentedMesh* mesh = new SegmentedMesh(voxel_size, voxel_size * 5, open3d::integration::TSDFVolumeColorType::RGB8, block_size, false);
 
 	// thread *app = new thread(application_thread);
 
@@ -211,7 +213,7 @@ int main(int argc, char **argv)
 
     Mat image;//TODO: change it to sl:mat or sth to indicate its the zed mat
 
-	FrameAvailableHandler tsdfFrameHandler([&tsdf_volume, &frame_counter, &do_integration, intr, &mesh, &cam](MultiCameraFrame::Ptr frame) {
+	FrameAvailableHandler tsdfFrameHandler([&frame_counter, &do_integration, intr, &mesh, &cam](MultiCameraFrame::Ptr frame) {
 		if (!do_integration || frame_counter % 3 != 0) {
 			return;
 		}
@@ -223,11 +225,19 @@ int main(int argc, char **argv)
 		
 		cv::Mat color_mat = slMat2cvMat(tempImageLeft);
 		cam.retrieveImage(tempImageLeft, VIEW::LEFT);
+		cv::Mat color_mat3 = cv::Mat();
+		cv::cvtColor(color_mat, color_mat3, CV_BGRA2RGB);
+
 		
 		cv::Mat depth_mat = slMat2cvMat(tempImageDepth);
 		cam.retrieveMeasure(tempImageDepth, MEASURE::DEPTH);
 
-		auto rgbd_image = generateRGBDImageFromCV(color_mat, depth_mat);
+		//cv::imshow("depth", depth_mat);
+
+		depth_mat *= 1000;
+		depth_mat.convertTo(depth_mat, CV_16UC1);
+
+		auto rgbd_image = generateRGBDImageFromCV(color_mat3, depth_mat);
 
 		//get pose
 		Pose zed_pose;
@@ -247,14 +257,8 @@ int main(int argc, char **argv)
 			// Get rotation and translation and displays it
 			Eigen::Matrix4d pose;
 			slPose2Matrix(zed_pose, pose);
-			try {
-				tsdf_volume->Integrate(*rgbd_image, intr, pose);
 
-			} catch (std::exception& e) {
-				std::cout << "exception: " << e.what() << std::endl;
-			}
-
-			mesh->Integrate(*rgbd_image, intr, pose);
+			mesh->Integrate(*rgbd_image, intr, pose.inverse());
 		}
 		else {
 			std::cerr << "1. Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
@@ -269,20 +273,15 @@ int main(int argc, char **argv)
 
 	std::shared_ptr<open3d::geometry::TriangleMesh> vis_mesh;
 
-	FrameAvailableHandler meshHandler([&tsdf_volume, &frame_counter, &do_integration, &vis_mesh, &mesh_obj, &cam](MultiCameraFrame::Ptr frame) {
+	FrameAvailableHandler meshHandler([&frame_counter, &do_integration, &vis_mesh, &mesh_obj, &cam](MultiCameraFrame::Ptr frame) {
 		if (!do_integration || frame_counter % 30 != 1) {
 			return;
 		}
 
-		vis_mesh = tsdf_volume->ExtractTriangleMesh();
-
-		cout << "num vertices: " << vis_mesh->vertices_.size() << endl;
-		cout << "num triangles: " << vis_mesh->triangles_.size() << endl;
-
 		mesh_obj.update_meshes();
 	});
 
-	FrameAvailableHandler viewHandler([&mesh_obj, &tsdf_volume, &mesh_win, &frame_counter, &cam](MultiCameraFrame::Ptr frame) {
+	FrameAvailableHandler viewHandler([&mesh_obj, &mesh_win, &frame_counter, &cam](MultiCameraFrame::Ptr frame) {
 		//get pose
 		Pose zed_pose;
 		POSITIONAL_TRACKING_STATE tracking_state;
@@ -303,7 +302,7 @@ int main(int argc, char **argv)
 			slPose2Matrix(zed_pose, pose);
 
 			Eigen::Affine3d transform(pose);
-			mesh_obj.set_transform(transform);
+			mesh_obj.set_transform(transform.inverse());
 		}
 		else {
 			std::cerr << "2. Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
@@ -355,15 +354,17 @@ int main(int argc, char **argv)
 
 	cout << "getting mesh" << endl;
 
+
+	mesh->WriteMeshes();
 	//std::shared_ptr<const open3d::geometry::Geometry> mesh = tsdf_volume->ExtractTriangleMesh();
 
-	std::shared_ptr<open3d::geometry::TriangleMesh> write_mesh = tsdf_volume->ExtractTriangleMesh();
+	//std::shared_ptr<open3d::geometry::TriangleMesh> write_mesh = tsdf_volume->ExtractTriangleMesh();
 
 	//const std::vector<std::shared_ptr<const open3d::geometry::Geometry>> mesh_vec = { mesh };
 
 	//open3d::visualization::DrawGeometries(mesh_vec);
 
-	open3d::io::WriteTriangleMeshToPLY("mesh.ply", *write_mesh, false, false, true, true, false, false);
+	//open3d::io::WriteTriangleMeshToPLY("mesh.ply", *write_mesh, false, false, true, true, false, false);
 
 	printf("\nTerminate...\n");
 	// Clean up
