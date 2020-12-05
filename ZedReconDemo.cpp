@@ -16,6 +16,11 @@
 using namespace ark;
 using namespace sl;
 
+// Parameters to change here
+float voxel_size = 0.03;
+float block_size = 3.0;
+int max_depth = 10;
+
 std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat color_mat, cv::Mat depth_mat) {
 
 	cv::Size s = color_mat.size();
@@ -49,7 +54,7 @@ std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat col
 		}
 	}
 
-	auto rgbd_image = open3d::geometry::RGBDImage::CreateFromColorAndDepth(*color_im, *depth_im, 1000.0, 10, false);
+	auto rgbd_image = open3d::geometry::RGBDImage::CreateFromColorAndDepth(*color_im, *depth_im, 1000.0, max_depth, false);
 
 	return rgbd_image;
 }
@@ -163,12 +168,10 @@ int main(int argc, char **argv)
 
 	open3d::integration::ScalableTSDFVolume * tsdf_volume = new open3d::integration::ScalableTSDFVolume(0.015, 0.05, open3d::integration::TSDFVolumeColorType::RGB8);
 
-	//intrinsics need to be set by user (currently does not read d435i_intr.yaml)
+	// TODO: read this from a config file
 	auto intr = open3d::camera::PinholeCameraIntrinsic(1280, 720, 521.0787963867188, 521.0787963867188, 658.9640502929688, 357.2626647949219);
 
 	// TODO: read from config file instead of hardcoding
-	float voxel_size = 0.03;
-	float block_size = 3.0;
 	SegmentedMesh* mesh = new SegmentedMesh(voxel_size, voxel_size * 5, open3d::integration::TSDFVolumeColorType::RGB8, block_size, false);
 
 	cv::namedWindow("image");
