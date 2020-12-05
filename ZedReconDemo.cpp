@@ -185,8 +185,7 @@ int main(int argc, char **argv)
     init_parameters.camera_fps = 30;
 
 	/* FOR STREAMING, UNCOMMENT */
-   //setStreamParameter(init_parameters, ipParam);
-
+    setStreamParameter(init_parameters, ipParam);
 
     //check if camera is opened successfully
     auto returned_state = cam.open(init_parameters);
