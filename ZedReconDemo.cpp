@@ -18,12 +18,9 @@ using namespace sl;
 
 std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat color_mat, cv::Mat depth_mat) {
 
-	/*cv::Size s = color_mat.size();
+	cv::Size s = color_mat.size();
 	int height = s.height;
-	int width = s.width;*/
-
-	int height = 720;
-	int width = 1280;
+	int width = s.width;
 
 	auto color_im = std::make_shared<open3d::geometry::Image>();
 	color_im->Prepare(width, height, 3, sizeof(uint8_t));
@@ -41,7 +38,6 @@ std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat col
 		}
 	}
 
-
 	auto depth_im = std::make_shared<open3d::geometry::Image>();
 	depth_im->Prepare(width, height, 1, sizeof(uint16_t));
 
@@ -49,14 +45,11 @@ std::shared_ptr<open3d::geometry::RGBDImage> generateRGBDImageFromCV(cv::Mat col
 
 	for (int i = 0; i < height; i++) {
 		for (int k = 0; k < width; k++) {
-			*p++ = depth_mat.at<uint16_t>(i, k);; // depth_mat.at<uint16_t>(i, k);
-			//std::cout << (uint16_t)(depth_mat.at<float>(i, k) * 1000) << std::endl;
-			//std::cout <<"F" << depth_mat.at<float>(i, k) << std::endl;
+			*p++ = depth_mat.at<uint16_t>(i, k);
 		}
 	}
 
 	auto rgbd_image = open3d::geometry::RGBDImage::CreateFromColorAndDepth(*color_im, *depth_im, 1000.0, 10, false);
-
 
 	return rgbd_image;
 }
@@ -139,8 +132,10 @@ int main(int argc, char **argv)
 	if (argc == 5) {
 		deltaT = okvis::Duration(atof(argv[4]));
 	}
+
     //initialize ip
     std::string ipParam = string(argv[1]);
+
 	// read configuration file
 	std::string configFilename;
 	if (argc > 2) configFilename = argv[2];
@@ -163,8 +158,6 @@ int main(int argc, char **argv)
 	okvis::Time start(0.0);
 	int id = 0;
 
-
-
 	int frame_counter = 1;
 	bool do_integration = true;
 
@@ -177,8 +170,6 @@ int main(int argc, char **argv)
 	float voxel_size = 0.03;
 	float block_size = 3.0;
 	SegmentedMesh* mesh = new SegmentedMesh(voxel_size, voxel_size * 5, open3d::integration::TSDFVolumeColorType::RGB8, block_size, false);
-
-	// thread *app = new thread(application_thread);
 
 	cv::namedWindow("image");
 
@@ -198,7 +189,7 @@ int main(int argc, char **argv)
     auto returned_state = cam.open(init_parameters);
     if (returned_state != ERROR_CODE::SUCCESS) {
         std::cerr << "Camera Open " << returned_state << ". Exit program." << std:: endl;
-        return -1;//TODO: change to exit param error code
+        return -1; //TODO: change to exit param error code
     }
 
     PositionalTrackingParameters positional_tracking_param;
@@ -208,20 +199,19 @@ int main(int argc, char **argv)
     if (returned_state != ERROR_CODE::SUCCESS) {
         std::cerr << "Enabling positional tracking failed: " << returned_state << std::endl;
         cam.close();
-        return -1;//TODO: change to exit param error code
+        return -1; //TODO: change to exit param error code
     }
 
-    Mat image;//TODO: change it to sl:mat or sth to indicate its the zed mat
+	sl::Mat image;
 
 	FrameAvailableHandler tsdfFrameHandler([&frame_counter, &do_integration, intr, &mesh, &cam](MultiCameraFrame::Ptr frame) {
 		if (!do_integration || frame_counter % 3 != 0) {
 			return;
 		}
 
-		//cout << "Integrating frame number: " << frame->frameId_ << endl;
 		//get color and depth images
-		sl::Mat tempImageLeft(1280, 720, MAT_TYPE::U8_C4);//TODO: change it to sl:mat or sth to indicate its the zed mat
-		sl::Mat tempImageDepth(1280, 720, MAT_TYPE::F32_C1);//TODO: change it to sl:mat or sth to indicate its the zed mat
+		sl::Mat tempImageLeft(1280, 720, MAT_TYPE::U8_C4);
+		sl::Mat tempImageDepth(1280, 720, MAT_TYPE::F32_C1);
 		
 		cv::Mat color_mat = slMat2cvMat(tempImageLeft);
 		cam.retrieveImage(tempImageLeft, VIEW::LEFT);
@@ -231,8 +221,6 @@ int main(int argc, char **argv)
 		
 		cv::Mat depth_mat = slMat2cvMat(tempImageDepth);
 		cam.retrieveMeasure(tempImageDepth, MEASURE::DEPTH);
-
-		//cv::imshow("depth", depth_mat);
 
 		depth_mat *= 1000;
 		depth_mat.convertTo(depth_mat, CV_16UC1);
@@ -244,10 +232,6 @@ int main(int argc, char **argv)
 		POSITIONAL_TRACKING_STATE tracking_state;
 
 		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
-		/*while (tracking_state == POSITIONAL_TRACKING_STATE::SEARCHING) {
-			std::cout << "Camera Searching..." << std::endl;
-			tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
-		}*/
 
 		if (cam.grab() != ERROR_CODE::SUCCESS) {
 			std::cerr << "Cannot get input from zed camera" << std::endl;
@@ -261,7 +245,7 @@ int main(int argc, char **argv)
 			mesh->Integrate(*rgbd_image, intr, pose.inverse());
 		}
 		else {
-			std::cerr << "1. Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
+			std::cerr << "Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
 		}
 	});
 
@@ -287,10 +271,6 @@ int main(int argc, char **argv)
 		POSITIONAL_TRACKING_STATE tracking_state;
 		
 		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
-		/*while (tracking_state == POSITIONAL_TRACKING_STATE::SEARCHING) {
-			std::cout << "Camera Searching..." << std::endl;
-			tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
-		}*/
 
 		if (cam.grab() != ERROR_CODE::SUCCESS) {
 			std::cerr << "Cannot get input from zed camera" << std::endl;
@@ -305,16 +285,13 @@ int main(int argc, char **argv)
 			mesh_obj.set_transform(transform.inverse());
 		}
 		else {
-			std::cerr << "2. Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
+			std::cerr << "Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
 
 		}
 	});
 
-
-
 	while (MyGUI::Manager::running()) {
 
-		//printf("test\n");
 		//Update the display
 		MyGUI::Manager::update();
 
@@ -322,14 +299,15 @@ int main(int argc, char **argv)
         returned_state = cam.grab();
         if (returned_state == ERROR_CODE::SUCCESS) {
             frame_counter++;
+
             //call functions to do 3d recon
             tsdfFrameHandler(NULL);
             meshHandler(NULL);
             viewHandler(NULL);
+
             //display image
             cam.retrieveImage(image, VIEW::LEFT);
             cv::Mat imBGR = slMat2cvMat(image);
-
             cv::imshow("image", imBGR);
 
         } else {
@@ -354,22 +332,14 @@ int main(int argc, char **argv)
 
 	cout << "getting mesh" << endl;
 
-
 	mesh->WriteMeshes();
-	//std::shared_ptr<const open3d::geometry::Geometry> mesh = tsdf_volume->ExtractTriangleMesh();
-
-	//std::shared_ptr<open3d::geometry::TriangleMesh> write_mesh = tsdf_volume->ExtractTriangleMesh();
-
-	//const std::vector<std::shared_ptr<const open3d::geometry::Geometry>> mesh_vec = { mesh };
-
-	//open3d::visualization::DrawGeometries(mesh_vec);
-
-	//open3d::io::WriteTriangleMeshToPLY("mesh.ply", *write_mesh, false, false, true, true, false, false);
 
 	printf("\nTerminate...\n");
+
 	// Clean up
     cam.disablePositionalTracking();
 	cam.close();
+
 	printf("\nExiting...\n");
 	return 0;
 }
