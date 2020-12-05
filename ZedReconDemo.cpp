@@ -115,6 +115,83 @@ void slPose2Matrix(Pose& pose, Eigen::Matrix4d& matrix)
 	matrix.block<3, 1>(0, 3) = T_SL;
 }
 
+void tsdfFrameHandler(int frame_counter, bool do_integration, open3d::camera::PinholeCameraIntrinsic &intr, SegmentedMesh* mesh, Camera &cam) {
+	if (!do_integration || frame_counter % 3 != 0) {
+		return;
+	}
+
+	//get color and depth images
+	sl::Mat tempImageLeft(1280, 720, MAT_TYPE::U8_C4);
+	sl::Mat tempImageDepth(1280, 720, MAT_TYPE::F32_C1);
+
+	cv::Mat color_mat = slMat2cvMat(tempImageLeft);
+	cam.retrieveImage(tempImageLeft, VIEW::LEFT);
+	cv::Mat color_mat3 = cv::Mat();
+	cv::cvtColor(color_mat, color_mat3, CV_BGRA2RGB);
+
+
+	cv::Mat depth_mat = slMat2cvMat(tempImageDepth);
+	cam.retrieveMeasure(tempImageDepth, MEASURE::DEPTH);
+
+	depth_mat *= 1000;
+	depth_mat.convertTo(depth_mat, CV_16UC1);
+
+	auto rgbd_image = generateRGBDImageFromCV(color_mat3, depth_mat);
+
+	//get pose
+	Pose zed_pose;
+	POSITIONAL_TRACKING_STATE tracking_state;
+
+	tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+
+	if (cam.grab() != ERROR_CODE::SUCCESS) {
+		std::cerr << "Cannot get input from zed camera" << std::endl;
+	}
+
+	if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
+		// Get rotation and translation and displays it
+		Eigen::Matrix4d pose;
+		slPose2Matrix(zed_pose, pose);
+
+		mesh->Integrate(*rgbd_image, intr, pose.inverse());
+	}
+	else {
+		std::cerr << "Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
+	}
+}
+
+void meshHandler(int frame_counter, bool do_integration, std::shared_ptr<open3d::geometry::TriangleMesh> &vis_mesh, MyGUI::Mesh &mesh_obj, Camera &cam) {
+	if (!do_integration || frame_counter % 30 != 1) {
+		return;
+	}
+
+	mesh_obj.update_meshes();
+}
+
+void viewHandler(MyGUI::Mesh &mesh_obj, MyGUI::MeshWindow &mesh_win, int frame_counter, Camera &cam) {
+	//get pose
+	Pose zed_pose;
+	POSITIONAL_TRACKING_STATE tracking_state;
+
+	tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
+
+	if (cam.grab() != ERROR_CODE::SUCCESS) {
+		std::cerr << "Cannot get input from zed camera" << std::endl;
+	}
+
+	if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
+		// Get rotation and translation and displays it
+		Eigen::Matrix4d pose;
+		slPose2Matrix(zed_pose, pose);
+
+		Eigen::Affine3d transform(pose);
+		mesh_obj.set_transform(transform.inverse());
+	}
+	else {
+		std::cerr << "Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
+
+	}
+}
 
 //TODO: loop closure handler calling deintegration
 int main(int argc, char **argv)
@@ -186,7 +263,8 @@ int main(int argc, char **argv)
 
 	/* FOR STREAMING, UNCOMMENT */
    //setStreamParameter(init_parameters, ipParam);
-
+	/* FOR TESTING WITH SVO, UNCOMMENT */
+	init_parameters.input.setFromSVOFile(argv[1]);
 
     //check if camera is opened successfully
     auto returned_state = cam.open(init_parameters);
@@ -207,51 +285,6 @@ int main(int argc, char **argv)
 
 	sl::Mat image;
 
-	FrameAvailableHandler tsdfFrameHandler([&frame_counter, &do_integration, intr, &mesh, &cam](MultiCameraFrame::Ptr frame) {
-		if (!do_integration || frame_counter % 3 != 0) {
-			return;
-		}
-
-		//get color and depth images
-		sl::Mat tempImageLeft(1280, 720, MAT_TYPE::U8_C4);
-		sl::Mat tempImageDepth(1280, 720, MAT_TYPE::F32_C1);
-		
-		cv::Mat color_mat = slMat2cvMat(tempImageLeft);
-		cam.retrieveImage(tempImageLeft, VIEW::LEFT);
-		cv::Mat color_mat3 = cv::Mat();
-		cv::cvtColor(color_mat, color_mat3, CV_BGRA2RGB);
-
-		
-		cv::Mat depth_mat = slMat2cvMat(tempImageDepth);
-		cam.retrieveMeasure(tempImageDepth, MEASURE::DEPTH);
-
-		depth_mat *= 1000;
-		depth_mat.convertTo(depth_mat, CV_16UC1);
-
-		auto rgbd_image = generateRGBDImageFromCV(color_mat3, depth_mat);
-
-		//get pose
-		Pose zed_pose;
-		POSITIONAL_TRACKING_STATE tracking_state;
-
-		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
-
-		if (cam.grab() != ERROR_CODE::SUCCESS) {
-			std::cerr << "Cannot get input from zed camera" << std::endl;
-		}
-
-		if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
-			// Get rotation and translation and displays it
-			Eigen::Matrix4d pose;
-			slPose2Matrix(zed_pose, pose);
-
-			mesh->Integrate(*rgbd_image, intr, pose.inverse());
-		}
-		else {
-			std::cerr << "Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
-		}
-	});
-
 	MyGUI::MeshWindow mesh_win("Mesh Viewer", 1200, 1200);
 	MyGUI::Mesh mesh_obj("mesh", mesh);
 
@@ -259,39 +292,6 @@ int main(int argc, char **argv)
 
 
 	std::shared_ptr<open3d::geometry::TriangleMesh> vis_mesh;
-
-	FrameAvailableHandler meshHandler([&frame_counter, &do_integration, &vis_mesh, &mesh_obj, &cam](MultiCameraFrame::Ptr frame) {
-		if (!do_integration || frame_counter % 30 != 1) {
-			return;
-		}
-
-		mesh_obj.update_meshes();
-	});
-
-	FrameAvailableHandler viewHandler([&mesh_obj, &mesh_win, &frame_counter, &cam](MultiCameraFrame::Ptr frame) {
-		//get pose
-		Pose zed_pose;
-		POSITIONAL_TRACKING_STATE tracking_state;
-		
-		tracking_state = cam.getPosition(zed_pose, REFERENCE_FRAME::WORLD);
-
-		if (cam.grab() != ERROR_CODE::SUCCESS) {
-			std::cerr << "Cannot get input from zed camera" << std::endl;
-		}
-
-		if (tracking_state == POSITIONAL_TRACKING_STATE::OK) {
-			// Get rotation and translation and displays it
-			Eigen::Matrix4d pose;
-			slPose2Matrix(zed_pose, pose);
-
-			Eigen::Affine3d transform(pose);
-			mesh_obj.set_transform(transform.inverse());
-		}
-		else {
-			std::cerr << "Positional tracking state wrong, cannot intergrate frame: " << tracking_state << std::endl;
-
-		}
-	});
 
 	while (MyGUI::Manager::running()) {
 
@@ -304,9 +304,9 @@ int main(int argc, char **argv)
             frame_counter++;
 
             //call functions to do 3d recon
-            tsdfFrameHandler(NULL);
-            meshHandler(NULL);
-            viewHandler(NULL);
+			tsdfFrameHandler(frame_counter, do_integration, intr, mesh, cam);
+			meshHandler(frame_counter, do_integration, vis_mesh, mesh_obj, cam);
+			viewHandler(mesh_obj, mesh_win, frame_counter, cam);
 
             //display image
             cam.retrieveImage(image, VIEW::LEFT);
