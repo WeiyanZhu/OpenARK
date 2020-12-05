@@ -264,7 +264,7 @@ int main(int argc, char **argv)
 	/* FOR STREAMING, UNCOMMENT */
    //setStreamParameter(init_parameters, ipParam);
 	/* FOR TESTING WITH SVO, UNCOMMENT */
-	init_parameters.input.setFromSVOFile(argv[1]);
+	//init_parameters.input.setFromSVOFile(argv[1]);
 
     //check if camera is opened successfully
     auto returned_state = cam.open(init_parameters);
